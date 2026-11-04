@@ -1,0 +1,40 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Your data: never commit it
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+finance-backup*
+*.csv
+*.tsv
+*.tab
+*.txt
+!requirements*.txt
+!sample_data/*.csv
+*.pdf
+*.xlsx
+*.xls
+*.ofx
+*.qfx
+
+# Secrets and local config
+.env
+.env.*
+.streamlit/secrets.toml
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
