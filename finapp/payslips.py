@@ -8,7 +8,6 @@ it came from, for you to confirm or correct before it's saved.
 """
 import io
 import re
-from datetime import date
 
 import pandas as pd
 
@@ -136,13 +135,13 @@ def find_employer(text: str) -> str:
     m = re.search(r"(werkgever|employer|company|bedrijf)\s*[:\-]?\s*([^\n]{2,60})", low)
     if m:
         return text[m.start(2):m.end(2)].strip().title()
-    first = next((l.strip() for l in text.splitlines() if l.strip() and not re.search(r"\d", l)), "")
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip() and not re.search(r"\d", ln)), "")
     return first[:60]
 
 
 def parse(text: str) -> dict:
     """Extract fields. Each value comes with the line it was read from, so it can be checked."""
-    lines = [l for l in (x.strip() for x in text.splitlines()) if l]
+    lines = [ln for ln in (x.strip() for x in text.splitlines()) if ln]
     found = {}
     for key, (_label, patterns) in FIELDS.items():
         for pat in patterns:

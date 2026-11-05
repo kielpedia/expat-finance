@@ -1,19 +1,22 @@
-# Household Finance
+# expat-finance
 
-A private, local app for a US family living in the Netherlands. Import bank statements from both countries, see your budget and net worth in EUR with USD alongside, and get a checklist of US and Dutch tax and benefit items that apply to you.
+[![CI](https://github.com/kielpedia/expat-finance/actions/workflows/ci.yml/badge.svg)](https://github.com/kielpedia/expat-finance/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Household Finance** is a private, local app for a US family living in the Netherlands. Import bank statements from both countries, see your budget and net worth in EUR with USD alongside, and get a checklist of US and Dutch tax and benefit items that apply to you.
 
 Everything stays on your computer. The app only goes online when you click for it: to download ECB exchange rates, to fetch a share price for your stock options (only the ticker is sent), or, if you opt in, to ask Claude to suggest categories (see below).
 
 ## Start it
 
-You need Python 3.10 or newer.
+You need Python 3.11 or newer.
 
 - **macOS / Linux:** double-click or run `./run.sh`
 - **Windows:** double-click `run.bat`
 
-The first start creates a virtual environment and installs the packages in `requirements.txt` (Streamlit, pandas, Plotly, requests, openpyxl, pypdf). After that it opens at http://localhost:8501, reachable only from your machine.
+The first start creates a virtual environment and installs the packages in `requirements.txt` (Streamlit, pandas, Plotly, requests, openpyxl, pypdf, keyring, defusedxml). After that it opens at http://localhost:8501, reachable only from your machine.
 
-**Don't expose it to a network.** The app has no login: anyone who can reach it sees all your data. Keep it on localhost; don't put it behind a reverse proxy or open the port.
+**Don't expose it to a network.** The app has no login: anyone who can reach it sees all your data. It refuses to open when it's listening on a network address or reached through a reverse proxy. See [SECURITY.md](SECURITY.md).
 
 ## First-time setup
 
@@ -46,6 +49,8 @@ Try it with fake data: `python sample_data/make_samples.py`, then import the fou
 
 **Netherlands:** Box 3 estimate from 1 January balances, kinderbijslag expected vs. received, kindgebonden budget estimate, childcare costs without kinderopvangtoeslag, expat-ruling salary norm and the 2027 change to 27%, and your municipality's charges (waste, sewer, OZB) against what you paid. Utrecht's tariffs are built in; for another municipality, enter the rates from your assessment, or add a block to `MUNICIPAL_CHARGES` in `finapp/benchmarks.py`.
 
+**Payslips:** read Dutch and English payslip PDFs (Workday layout in mind) locally, to check gross, wage tax and expat-ruling allowance against what arrived in your account.
+
 **Stock options:** import your grant history (E*TRADE's Excel export or any CSV); the ticker and company are read from the file, and grants from several companies sit side by side. Values each grant at today's price, handles stock splits (a list of recent large splits is built in, and you can add your own), and records exercises for the tax year.
 
 ## Spreading yearly costs
@@ -58,7 +63,7 @@ At the bottom of the Budget page you can try changes against your average month:
 
 ## Claude category suggestions (optional)
 
-On **Review & categorise**, *Suggest categories with Claude* sends the payees that still need a category to the Claude API and brings back suggestions for you to accept or change. You need your own API key from console.anthropic.com (Household & settings).
+On **Review & categorise**, *Suggest categories with Claude* sends the payees that still need a category to the Claude API and brings back suggestions for you to accept or change. You need your own API key from console.anthropic.com. Enter it on Household & settings: it's kept in your operating system's credential store (Windows Credential Manager, macOS Keychain or the Linux keyring), never in the database. Or set the `ANTHROPIC_API_KEY` environment variable.
 
 Only cleaned payee names, money in or out, and your category names are sent. Numbers, dates, card references, IBANs and e-mail addresses are removed first; amounts are off unless you switch them on. Payees that look like a person's name are unticked by default. You see the exact request before sending, and every request is logged under Household & settings.
 
@@ -73,3 +78,17 @@ One SQLite file at `~/FinanceApp/finance.db` (set `FINAPP_DB` to move it). It's 
 ## Not tax advice
 
 The app estimates and flags. A cross-border US/NL tax adviser should confirm anything you file.
+
+## Development
+
+```
+python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt   # Windows: .venv\Scripts\pip
+.venv/bin/pytest            # tests
+.venv/bin/ruff check .      # lint
+```
+
+Tests use the fake data in `sample_data/` and never touch your own database. See [CONTRIBUTING.md](CONTRIBUTING.md) for adding a bank format or a new tax year.
+
+## License
+
+[MIT](LICENSE)

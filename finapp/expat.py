@@ -105,8 +105,11 @@ def us_family_credits(profile: dict, conv, year: int) -> dict:
     earned_usd = earned_eur * usd
     dec31 = date(year, 12, 31)
     kids = profile.get("kids", [])
-    eligible = [k for k in kids if k.get("birth") and age_on(k["birth"], dec31) < 17 and k.get("has_ssn", True)]
-    no_ssn = [k.get("name", "child") for k in kids if k.get("birth") and age_on(k["birth"], dec31) < 17 and not k.get("has_ssn", True)]
+    # has_ssn: True / False / None (not answered). Only a confirmed SSN counts towards the credit.
+    under17 = [k for k in kids if k.get("birth") and age_on(k["birth"], dec31) < 17]
+    eligible = [k for k in under17 if k.get("has_ssn") is True]
+    no_ssn = [k.get("name", "child") for k in under17 if k.get("has_ssn") is False]
+    ssn_unknown = [k.get("name", "child") for k in under17 if k.get("has_ssn") is None]
     parent_ssn = profile.get("me_has_ssn", True)
 
     n = len(eligible) if parent_ssn else 0
@@ -127,6 +130,7 @@ def us_family_credits(profile: dict, conv, year: int) -> dict:
         "earned_usd": earned_usd,
         "eligible_children": [k.get("name", "child") for k in eligible],
         "children_without_ssn": no_ssn,
+        "children_ssn_unknown": ssn_unknown,
         "parent_ssn": parent_ssn,
         "credit_total": credit,
         "actc_with_ftc": refundable_ftc,
@@ -296,7 +300,7 @@ def kinderbijslag_expected(kids: list, year: int) -> dict:
         if not k.get("birth"):
             continue
         amt = 0.0
-        for q, (m, half) in enumerate([(1, "H1"), (4, "H1"), (7, "H2"), (10, "H2")], start=1):
+        for m, half in [(1, "H1"), (4, "H1"), (7, "H2"), (10, "H2")]:
             b = band(age_on(k["birth"], date(year, m, 1)))
             # benefit starts the quarter after birth
             if b and pd.Timestamp(k["birth"]) < pd.Timestamp(year, m, 1):
@@ -364,6 +368,16 @@ def opportunities(con, conv, profile: dict, tx: pd.DataFrame, year: int) -> list
     yr_tx = tx[tx["date"].dt.year == year] if not tx.empty else tx
 
     # ---- US filing
+    if not profile.get("treasury_usd_per_eur"):
+        gap = conv.rate_gap_days("USD", date(year, 12, 31))
+        if gap is None:
+            add("act", "US", "Exchange rates not loaded: US thresholds are rough",
+                "The FBAR, Form 8938 and Child Tax Credit checks below convert euros at a fixed fallback rate, which can be "
+                "5-10% off and flip a result near a threshold. Click **Download / refresh ECB rates** on Household & "
+                "settings, or enter the Treasury rate there.")
+        elif gap > 7:
+            add("check", "US", f"Exchange rates are {gap} days old",
+                "The US checks convert at the latest ECB rate you downloaded. Refresh rates on Household & settings.")
     f = fbar_8938(con, conv, year, fs, profile.get("treasury_usd_per_eur"))
     if f["fbar_required"]:
         add("act", "US", "FBAR (FinCEN 114) required",
@@ -395,6 +409,10 @@ def opportunities(con, conv, profile: dict, tx: pd.DataFrame, year: int) -> list
         add("act", "US", "Children without an SSN",
             "No Child Tax Credit without an SSN issued before the return due date: " + ", ".join(cr["children_without_ssn"]) +
             ". Apply via a Consular Report of Birth Abroad and SS-5 at the US consulate in Amsterdam.")
+    if cr["children_ssn_unknown"]:
+        add("check", "US", "Confirm which children have an SSN",
+            "Not answered yet for: " + ", ".join(cr["children_ssn_unknown"]) + ". They're left out of the Child Tax Credit "
+            "estimate until you tick *Has SSN* on Household & settings.")
     if cr["ruling_allowance_usd"]:
         add("check", "US", "Expat-ruling allowance is US-taxable",
             f"About ${cr['ruling_allowance_usd']:,.0f} paid tax-free in NL is still income on your US return, with no Dutch tax "
@@ -435,14 +453,15 @@ def opportunities(con, conv, profile: dict, tx: pd.DataFrame, year: int) -> list
         if er:
             income -= er["allowance"]  # toetsingsinkomen excludes the tax-free allowance
         kgb = kindgebonden_budget(kids, income, b3["base"], partner, year)
-        toeslag = yr_tx.loc[yr_tx["category"] == "Income: Toeslagen", "eur"].sum() if not yr_tx.empty else 0
-        if kgb.get("amount", 0) > 100 and toeslag <= 0:
+        recv = lambda cat: yr_tx.loc[yr_tx["category"] == cat, "eur"].sum() if not yr_tx.empty else 0
+        kgb_got, kot_got = recv("Income: Kindgebonden budget"), recv("Income: Kinderopvangtoeslag")
+        if kgb.get("amount", 0) > 100 and kgb_got <= 0:
             add("act", "NL", f"You may qualify for kindgebonden budget (about €{kgb['amount']:,.0f}/yr)",
                 "Rough estimate from your household income and 1 January assets. Do a proefberekening at toeslagen.nl. "
                 "You can still apply for this year until 31 December next year. Note this is a benefit, not a tax refund, so it doesn't affect your US return.")
 
         childcare = -yr_tx.loc[yr_tx["category"] == "Family: Childcare", "eur"].sum() if not yr_tx.empty else 0
-        if childcare > 500 and toeslag <= 0:
+        if childcare > 500 and kot_got <= 0:
             add("act", "NL", "Childcare costs but no kinderopvangtoeslag received",
                 f"You spent about €{childcare:,.0f} on childcare this year. If both partners work and the provider is LRK-registered, "
                 "kinderopvangtoeslag can cover a large share. Apply within 3 months after the month care starts.")

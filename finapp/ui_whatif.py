@@ -19,13 +19,16 @@ def baselines(v: pd.DataFrame, nm: int) -> dict:
     """Per-month amounts (positive) for each thing you can change, keyed by its label."""
     b = v[v["budget"]]
     out = {}
-    inc = b[b["eur"] > 0].groupby("payee")["eur"].sum().sort_values(ascending=False) / nm
-    for p, a in inc.items():
+    inc_rows = b[analysis.income_mask(b)]
+    inc = inc_rows.groupby("payee")["eur"].sum().sort_values(ascending=False) / nm
+    for p, a in inc[inc > 0].items():
         out[f"Income · {p}"] = ("income", a)
-    exp = b[b["eur"] < 0]
-    for c, a in (-exp.groupby("category")["eur"].sum() / nm).sort_values(ascending=False).items():
+    exp = analysis.spending_rows(b)
+    cats = -exp.groupby("category")["eur"].sum() / nm
+    for c, a in cats[cats > 0].sort_values(ascending=False).items():
         out[f"Category · {c}"] = ("expense", a)
-    for p, a in (-exp.groupby("payee")["eur"].sum() / nm).sort_values(ascending=False).head(60).items():
+    pays = -exp.groupby("payee")["eur"].sum() / nm
+    for p, a in pays[pays > 0].sort_values(ascending=False).head(60).items():
         out[f"Payee · {p}"] = ("expense", a)
     return out
 
@@ -107,7 +110,7 @@ def render(con, conv, v: pd.DataFrame, nm: int, period_label: str):
         eff.append({"label": label, "what": w, "side": side, "before": b0, "after": b1, "net": d_net})
     eff = pd.DataFrame(eff)
     cats_changed = {w.split(" · ", 1)[1] for w in eff["what"] if w.startswith("Category · ")}
-    exp_payees = v[(v["budget"]) & (v["eur"] < 0)]
+    exp_payees = analysis.spending_rows(v)
     for w in eff["what"]:
         if w.startswith("Payee · "):
             p = w.split(" · ", 1)[1]

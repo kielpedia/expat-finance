@@ -33,10 +33,10 @@ echo  Using Python %PYVER%
 
 REM ---- (re)create the virtual environment if it is missing or broken
 if exist ".venv\Scripts\python.exe" (
-  ".venv\Scripts\python.exe" -c "import streamlit, pandas, plotly, requests, openpyxl, pypdf" >nul 2>nul && goto :run
+  ".venv\Scripts\python.exe" -c "import streamlit, pandas, plotly, requests, openpyxl, pypdf, keyring, defusedxml" >nul 2>nul && goto :run
   echo  Installing new or missing packages...
   ".venv\Scripts\python.exe" -m pip install -q -r requirements.txt
-  ".venv\Scripts\python.exe" -c "import streamlit, pandas, plotly, requests, openpyxl, pypdf" >nul 2>nul && goto :run
+  ".venv\Scripts\python.exe" -c "import streamlit, pandas, plotly, requests, openpyxl, pypdf, keyring, defusedxml" >nul 2>nul && goto :run
   echo  Previous setup was incomplete - rebuilding...
   rmdir /s /q .venv
 )

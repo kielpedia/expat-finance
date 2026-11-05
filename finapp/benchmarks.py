@@ -87,7 +87,7 @@ def cbs_group(category: str) -> int:
 
 
 def shares_vs_cbs(spend: pd.DataFrame, htype: str, months: int) -> pd.DataFrame:
-    """spend: rows of expense transactions (eur < 0, budget only). Returns per-group comparison."""
+    """spend: spending rows (budget, not income; refunds offset). Returns per-group comparison."""
     s = spend.assign(g=spend["category"].map(cbs_group), amt=-spend["eur"])
     tot = s["amt"].sum()
     rows = []
@@ -102,7 +102,8 @@ def shares_vs_cbs(spend: pd.DataFrame, htype: str, months: int) -> pd.DataFrame:
 
 def trends(tx: pd.DataFrame, recent: int = 3, base: int = 9) -> pd.DataFrame:
     """Per category: average of the last `recent` full months vs the `base` months before them."""
-    e = tx[(tx["budget"]) & (tx["eur"] < 0)].copy()
+    from .analysis import spending_rows
+    e = spending_rows(tx).copy()
     if e.empty:
         return pd.DataFrame()
     months = sorted(e["month"].unique())
@@ -111,7 +112,7 @@ def trends(tx: pd.DataFrame, recent: int = 3, base: int = 9) -> pd.DataFrame:
     last = months[-recent:]
     prev = months[-(recent + base):-recent]
     e["amt"] = -e["eur"]
-    pm = e.pivot_table(index="category", columns="month", values="amt", aggfunc="sum", fill_value=0)
+    pm = e.pivot_table(index="category", columns="month", values="amt", aggfunc="sum", fill_value=0).clip(lower=0)
     out = pd.DataFrame({"recent": pm[last].mean(axis=1), "before": pm[[m for m in prev if m in pm]].mean(axis=1)})
     out["change"] = out["recent"] - out["before"]
     out["pct"] = (out["change"] / out["before"]).where(out["before"] > 0)

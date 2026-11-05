@@ -66,6 +66,20 @@ class Converter:
             return self.fallback[ccy]
         raise KeyError(f"No rate for {ccy}. Refresh rates on the Settings page.")
 
+    def uses_fallback(self, ccy: str = "USD") -> bool:
+        """True when no ECB rates are loaded for `ccy`, so conversions use the hard-coded fallback."""
+        return ccy != "EUR" and (self.t.empty or ccy not in self.t or self.t[ccy].dropna().empty)
+
+    def rate_gap_days(self, ccy: str, on) -> int | None:
+        """Days between `on` (or today, if `on` is later) and the latest ECB rate on or before it.
+        None when there are no rates. More than a few days means the rates need refreshing."""
+        if self.uses_fallback(ccy):
+            return None
+        on = min(pd.Timestamp(on), pd.Timestamp.today().normalize())
+        s = self.t[ccy].dropna()
+        s = s[s.index <= on]
+        return int((on - s.index[-1]).days) if len(s) else None
+
     def convert(self, amount: float, src: str, dst: str, on) -> float:
         if src == dst:
             return amount

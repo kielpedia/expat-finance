@@ -11,6 +11,7 @@ import csv
 import hashlib
 import io
 import re
+import sqlite3
 
 import pandas as pd
 
@@ -328,7 +329,7 @@ def _skip_preamble(text: str) -> str:
 
 def row_hash(account_id: int, row, seq: int) -> str:
     key = f"{account_id}|{row['date']:%Y-%m-%d}|{row['amount']:.2f}|{row['description'][:120]}|{seq}"
-    return hashlib.sha1(key.encode()).hexdigest()
+    return hashlib.sha1(key.encode(), usedforsecurity=False).hexdigest()
 
 
 def save(con, account_id: int, df: pd.DataFrame, filename: str, fmt: str) -> tuple[int, int]:
@@ -356,7 +357,7 @@ def save(con, account_id: int, df: pd.DataFrame, filename: str, fmt: str) -> tup
                  r["counterparty"], bal, import_id, h),
             )
             added += 1
-        except Exception:  # duplicate hash
+        except sqlite3.IntegrityError:  # duplicate hash: already imported
             pass
         if bal is not None:
             con.execute(
@@ -498,7 +499,7 @@ def guess_kind(section: str) -> str:
 # ---------------------------------------------------------------- Fidelity positions (all accounts in one file)
 
 def is_fidelity_positions(raw_text: str) -> bool:
-    first = next((l for l in raw_text.splitlines() if l.strip()), "").lower()
+    first = next((ln for ln in raw_text.splitlines() if ln.strip()), "").lower()
     return "account number" in first and "account name" in first and "current value" in first
 
 

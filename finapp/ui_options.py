@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from . import db, options
-from .importers import _decode
 
 ITM, UNDER, INK, GRID = "#2a78d6", "#e34948", "#52514e", "rgba(0,0,0,0.08)"
 STATUS_ICON = {"in the money": "🟢", "underwater": "🔴", "no price": "⚪", "expired": "⚫", "fully exercised": "✔️"}

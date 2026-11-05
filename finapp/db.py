@@ -65,7 +65,13 @@ CREATE TABLE IF NOT EXISTS settings (
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    new = not DB_PATH.exists()
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
+    if new and os.name != "nt":
+        try:
+            os.chmod(DB_PATH, 0o600)   # readable by you only (Windows uses your profile's permissions instead)
+        except OSError:
+            pass
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.executescript(SCHEMA)
@@ -88,11 +94,40 @@ def _migrate(con):
     for col, typ in (("tax_treatment", "TEXT"), ("roth_share", "REAL"), ("split_updated", "TEXT")):
         if col not in acols:   # tax treatment per account; roth_share (0-1) for mixed plans
             con.execute(f"ALTER TABLE accounts ADD COLUMN {col} {typ}")
+    done = {r["key"] for r in con.execute("SELECT key FROM settings WHERE key LIKE 'migr_%'")}
+    if "migr_rules_v2" not in done:
+        # v2 rules split toeslagen into separate categories and fixed some mismatches (Wise, Disney Plus, 'loon');
+        # re-sort the automatically categorised rows those rules touched. Hand-set categories are never changed.
+        from . import categorize
+        categorize.apply(con, only_categories=["Income: Toeslagen", "Income: Salary", "Transfer", "Food: Groceries",
+                                               "Housing: Utilities", "Transfer: Investing"])
+        con.execute("INSERT OR REPLACE INTO settings(key, value) VALUES('migr_rules_v2', 'true')")
     from . import options          # stock option tables (CREATE IF NOT EXISTS, cheap)
     options.setup(con)
     from . import payslips
     payslips.setup(con)
     con.commit()
+
+
+def backup_bytes(con) -> bytes:
+    """A consistent copy of the database (SQLite's backup API, safe while the app is writing), without any
+    API key an older version may have stored."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "backup.db"
+        dst = sqlite3.connect(path)
+        con.backup(dst)
+        row = dst.execute("SELECT value FROM settings WHERE key='ai'").fetchone()
+        if row:
+            try:
+                cfg = json.loads(row[0]) or {}
+                if cfg.pop("api_key", None) is not None:
+                    dst.execute("UPDATE settings SET value=? WHERE key='ai'", (json.dumps(cfg),))
+                    dst.commit()
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+        dst.close()
+        return path.read_bytes()
 
 
 def get_setting(con, key, default=None):

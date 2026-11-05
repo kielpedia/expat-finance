@@ -14,17 +14,17 @@ def nl(v):
 
 
 # ---------------- ING joint checking (semicolon, newest first, as ING exports)
-rows, bal = [], 4200.0
+rows, bal = [], 3100.0
 for d in days:
     tx = []
     if d.day == 25:
-        tx += [("ACME BV", "Salaris " + d.strftime("%B"), 5400.0), ("Partner Employer BV", "Salaris", 2300.0)]
+        tx += [("ACME BV", "Salaris " + d.strftime("%B"), 4650.0), ("Example Werkgever BV", "Salaris", 2850.0)]
     if d.day == 1:
-        tx += [("Vesteda Woningbeheer", "Huur " + d.strftime("%m-%Y"), -1950.0),
-               ("Zilveren Kruis", "Zorgverzekering", -298.0), ("Vattenfall", "Termijnbedrag energie", -165.0),
-               ("Ziggo", "Internet en TV", -58.0), ("Partou Kinderopvang", "Kinderopvang maand", -1480.0)]
+        tx += [("Woonstichting Voorbeeld", "Huur " + d.strftime("%m-%Y"), -1725.0),
+               ("CZ", "Zorgverzekering", -312.0), ("Eneco", "Termijnbedrag energie", -140.0),
+               ("Ziggo", "Internet en TV", -58.0), ("Kinderdagverblijf De Speeltuin", "Kinderopvang maand", -1290.0)]
     if d.day == 2:
-        tx += [("Oranje Spaarrekening", "Naar Oranje Spaarrekening", -800.0)]
+        tx += [("Oranje Spaarrekening", "Naar Oranje Spaarrekening", -650.0)]
     if d.day == 5:
         tx += [("Videoland", "Videoland abonnement", -9.99), ("Spotify", "Spotify P0F2", -17.99)]
     if d.day == 15:
@@ -52,18 +52,18 @@ for d, name, mem, amt, b in reversed(rows):
 
 # ---------------- Rabobank savings
 lines = ['"IBAN/BBAN","Munt","BIC","Volgnr","Datum","Rentedatum","Bedrag","Saldo na trn","Tegenrekening IBAN/BBAN","Naam tegenpartij","Omschrijving-1","Omschrijving-2"']
-bal = 38000.0
+bal = 24500.0
 for i, d in enumerate([x for x in days if x.day == 2]):
-    bal += 800
-    lines.append(f'"NL99RABO0123456789","EUR","RABONL2U","{i+1:018d}","{d:%Y-%m-%d}","{d:%Y-%m-%d}","+800,00","{nl(bal)}","NL12INGB0001234567","Eigen rekening","Maandelijkse inleg",""')
+    bal += 650
+    lines.append(f'"NL99RABO0123456789","EUR","RABONL2U","{i+1:018d}","{d:%Y-%m-%d}","{d:%Y-%m-%d}","+650,00","{nl(bal)}","NL12INGB0001234567","Eigen rekening","Maandelijkse inleg",""')
     if d.month == 1:
-        bal += 410.5
-        lines.append(f'"NL99RABO0123456789","EUR","RABONL2U","{i+100:018d}","{d:%Y-%m-%d}","{d:%Y-%m-%d}","+410,50","{nl(bal)}","","Rabobank","Rente","2025"')
+        bal += 287.4
+        lines.append(f'"NL99RABO0123456789","EUR","RABONL2U","{i+100:018d}","{d:%Y-%m-%d}","{d:%Y-%m-%d}","+287,40","{nl(bal)}","","Rabobank","Rente","2025"')
 (HERE / "rabobank_savings.csv").write_text("\n".join(lines), encoding="cp1252")
 
 # ---------------- Chase checking (US)
 lines = ["Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #"]
-bal = 14100.0
+bal = 9600.0
 out = []
 for d in days:
     tx = []

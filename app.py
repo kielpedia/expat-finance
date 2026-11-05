@@ -12,9 +12,39 @@ import streamlit as st
 import os
 import re
 
-from finapp import ai, analysis, categorize, db, expat, fx, importers, rules, taxtreat
+from finapp import ai, analysis, categorize, db, expat, fx, importers, keystore, rules, taxtreat
 
 st.set_page_config(page_title="Household Finance", page_icon="💶", layout="wide")
+
+
+# The app has no login, so it must only be reachable from this computer. Refuse to show anything when it's
+# listening on a network address or being reached through a reverse proxy. FINAPP_ALLOW_REMOTE=1 overrides
+# this, at your own risk (put real authentication in front of it first).
+def _local_only():
+    if os.environ.get("FINAPP_ALLOW_REMOTE") == "1":
+        return
+    local = {"localhost", "127.0.0.1", "::1"}
+    addr = str(st.get_option("server.address") or "").strip().lower()
+    try:
+        headers = {k.lower(): v for k, v in st.context.headers.items()}
+    except Exception:  # noqa: BLE001  (no request context, e.g. in tests)
+        headers = {}
+    host = headers.get("host", "")
+    host = host.rsplit("]", 1)[0].lstrip("[") if host.startswith("[") else host.split(":")[0]
+    proxied = any(h in headers for h in ("x-forwarded-for", "x-forwarded-host", "forwarded", "x-real-ip"))
+    problem = None
+    if addr not in local:
+        problem = (f"it is listening on **{addr or 'every network interface'}**" +
+                   " instead of localhost. Start it with `run.bat` / `run.sh`, which keep it on this computer.")
+    elif proxied or (host and host.lower() not in local):
+        problem = "it is being reached through a proxy or another hostname, so other people may be able to see it."
+    if problem:
+        st.error("**Household Finance won't open here:** " + problem + "\n\nThe app has no login, so it only runs for "
+                 "this computer, at http://localhost:8501.", icon=":material/lock:")
+        st.stop()
+
+
+_local_only()
 
 
 # Streamlit renders text between two "$" signs as math. This app prints a lot of dollar
@@ -56,6 +86,7 @@ def get_con():
 
 con = get_con()
 db._migrate(con)  # cheap; keeps a long-running app in step with code updates
+keystore.migrate_from_db(con)  # older versions kept the API key in the database
 
 
 def get_conv():
@@ -244,7 +275,7 @@ if page == "Overview":
                           annotation_font_color=INK, annotation_font_size=12)
             fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.35)")
             # label only the best and worst month, not every bar
-            for idx, pos_label in ((m["net"].idxmax(), "top center"), (m["net"].idxmin(), "bottom center")):
+            for idx in (m["net"].idxmax(), m["net"].idxmin()):
                 if len(m) > 1:
                     v = m.at[idx, "net"]
                     fig.add_annotation(x=m.at[idx, "month"], y=v, text=f"{sym}{v:,.0f}", showarrow=False,
@@ -313,15 +344,17 @@ if page == "Overview":
 
         mt = tx[tx["month"] == month].copy()
         base = mt if incl_all else mt[mt["budget"]]
-        inc = base.loc[base["eur"] > 0, "eur"].sum() * k
-        out = -base.loc[base["eur"] < 0, "eur"].sum() * k
+        # with transfers shown, split by sign; otherwise income vs. spending (refunds offset spending)
+        is_in = (base["eur"] > 0) if incl_all else analysis.income_mask(base)
+        inc = base.loc[is_in, "eur"].sum() * k
+        out = -base.loc[~is_in, "eur"].sum() * k
         mm = st.columns(4)
         mm[0].metric("Income", f"{sym}{inc:,.0f}")
         mm[1].metric("Outflow", f"{sym}{out:,.0f}")
         mm[2].metric("Net", f"{sym}{inc - out:,.0f}")
         mm[3].metric("Transactions", f"{len(base):,}")
 
-        view_tx = base if flow == "All" else base[base["eur"] > 0] if flow == "Income" else base[base["eur"] < 0]
+        view_tx = base if flow == "All" else base[is_in] if flow == "Income" else base[~is_in]
         if view_tx.empty:
             st.caption("Nothing here for this month.")
         else:
@@ -577,7 +610,7 @@ elif page == "Review & categorise":
 
     # ---------------------------------------------------------- Claude suggestions
     ai_cfg = db.get_setting(con, "ai", {}) or {}
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or ai_cfg.get("api_key")
+    api_key = keystore.get_key()
     with st.expander("✨ Suggest categories with Claude", expanded=bool(st.session_state.get("ai_sugg"))):
         if True:
             incl = bool(ai_cfg.get("include_amounts", False))
@@ -806,7 +839,7 @@ elif page == "Transactions":
     with st.expander("Add a categorisation rule"):
         st.caption("Rules match payee + description (case-insensitive regex) and run before the built-in rules.")
         rc = st.columns([3, 2, 1])
-        pat = rc[0].text_input("Text or regex", placeholder="e.g. partou|smallsteps")
+        pat = rc[0].text_input("Text or regex", placeholder="e.g. swimming|zwembad")
         cat = rc[1].selectbox("Category", all_cats)
         new_cat = rc[1].text_input("…or a new category (Group: Sub)")
         if rc[2].button("Add & re-run"):
@@ -1016,7 +1049,7 @@ elif page == "Budget":
     ui_whatif.render(con, conv, v, nm, f"{p_from:%b %Y}" + (f" – {p_to:%b %Y}" if p_to != p_from else ""))
 
     st.subheader("Spending by group over time")
-    trend = v[(v["budget"]) & (v["eur"] < 0)].groupby(["month", "group"])["eur"].sum().abs().reset_index()
+    trend = analysis.spending_rows(v).groupby(["month", "group"])["eur"].sum().mul(-1).clip(lower=0).reset_index()
     if len(trend):
         fig = px.bar(trend, x="month", y="eur", color="group", color_discrete_sequence=px.colors.qualitative.Set2)
         fig.update_layout(height=360, yaxis_title="EUR", xaxis_title=None, margin=dict(t=10))
@@ -1055,7 +1088,7 @@ elif page == "Budget":
 
     with t_dutch:
         htype = bm.household_type(profile)
-        spend = v[(v["budget"]) & (v["eur"] < 0)]
+        spend = analysis.spending_rows(v)
         if spend.empty:
             st.caption("No spending in this period.")
         else:
@@ -1400,6 +1433,15 @@ elif page == "US filing":
     st.caption(f"Filing status: **{fs}** (change on Household & settings). Converting at 31 Dec ECB rate {rate:.4f} USD/EUR"
                + (f", overridden to Treasury rate {profile['treasury_usd_per_eur']}" if profile.get("treasury_usd_per_eur") else "") + ".")
 
+    if not profile.get("treasury_usd_per_eur"):
+        _gap = conv.rate_gap_days("USD", date(YEAR, 12, 31))
+        if _gap is None:
+            st.error("**Exchange rates aren't loaded**, so every dollar figure on this page uses a fixed fallback rate and "
+                     "can be 5-10% off, enough to flip a threshold. Click **Download / refresh ECB rates** on Household & "
+                     "settings first.", icon=":material/currency_exchange:")
+        elif _gap > 7:
+            st.warning(f"Exchange rates are {_gap} days old. Refresh them on Household & settings.",
+                       icon=":material/currency_exchange:")
     f = expat.fbar_8938(con, conv, YEAR, fs, profile.get("treasury_usd_per_eur"))
     st.subheader("FBAR and Form 8938")
     c = st.columns(3)
@@ -1440,6 +1482,9 @@ elif page == "US filing":
                 ". Your final Dutch tax comes from the aangifte; use that figure on the return.", icon=":material/receipt_long:")
     if cr["children_without_ssn"]:
         st.error("No SSN yet: " + ", ".join(cr["children_without_ssn"]) + ". The credit needs one issued before the return's due date.")
+    if cr.get("children_ssn_unknown"):
+        st.warning("Not answered on Household & settings: does " + ", ".join(cr["children_ssn_unknown"]) + " have an SSN? "
+                   "Left out of the estimate until you say yes.")
     if fs == "MFJ" and not profile.get("partner_us_person"):
         st.info("Filing jointly with a non-US spouse requires a §6013(g) election and puts their worldwide income on the US return. "
                 "Compare with Married Filing Separately or Head of Household before choosing.")
@@ -1665,12 +1710,15 @@ elif page == "Household & settings":
         p["me_has_ssn"] = c[2].checkbox("You have an SSN", p["me_has_ssn"])
 
         st.subheader("Children")
+        SSN_OPTS = {True: "Yes", False: "No", None: "Not sure"}
         kids_df = pd.DataFrame(p["kids"] or [], columns=["name", "birth", "has_ssn"])
         kids_df["birth"] = pd.to_datetime(kids_df["birth"], errors="coerce").dt.date
-        kids_df["has_ssn"] = kids_df["has_ssn"].fillna(True).astype(bool)
+        kids_df["has_ssn"] = [SSN_OPTS.get(x if isinstance(x, bool) else None) for x in kids_df["has_ssn"]]
         kids_ed = st.data_editor(kids_df, num_rows="dynamic", hide_index=True, width="stretch",
                                  column_config={"birth": st.column_config.DateColumn("Date of birth"),
-                                                "has_ssn": st.column_config.CheckboxColumn("Has SSN", default=True)})
+                                                "has_ssn": st.column_config.SelectboxColumn(
+                                                    "Has SSN", options=list(SSN_OPTS.values()), default="Not sure",
+                                                    help="Needed for the US Child Tax Credit. Only 'Yes' counts.")})
 
         st.subheader("Expat ruling")
         er = dict(p["expat_ruling"])
@@ -1694,7 +1742,7 @@ elif page == "Household & settings":
                                float(db.get_setting(con, "fallback_usd_per_eur", 1.10)), 0.01)
         if st.form_submit_button("Save", type="primary"):
             p["kids"] = [{"name": (r["name"] if pd.notna(r["name"]) and str(r["name"]).strip() else f"Child {i + 1}"), "birth": pd.to_datetime(r["birth"]).date().isoformat() if pd.notna(r["birth"]) and str(r["birth"]).strip() else None,
-                          "has_ssn": bool(r["has_ssn"])} for i, (_, r) in enumerate(kids_ed.iterrows())
+                          "has_ssn": {"Yes": True, "No": False}.get(r["has_ssn"])} for i, (_, r) in enumerate(kids_ed.iterrows())
                          if (pd.notna(r["birth"]) and str(r["birth"]).strip()) or (pd.notna(r["name"]) and r["name"])]
             db.set_setting(con, "profile", p)
             db.set_setting(con, "fallback_usd_per_eur", fb)
@@ -1708,30 +1756,38 @@ elif page == "Household & settings":
                "Create a key at console.anthropic.com (API usage is billed separately from a Claude subscription; "
                "categorising a few hundred payees costs a few cents). Under Anthropic's API terms, requests aren't used for "
                "training and are deleted within 30 days, longer only if flagged for a policy violation.")
+    store_ok = keystore.store_available()
+    saved = keystore.has_saved_key()
     with st.form("ai_form"):
         c = st.columns([3, 2, 2])
         if env_key:
             c[0].text_input("API key", "Using ANTHROPIC_API_KEY from your environment", disabled=True)
             new_key = None
         else:
-            new_key = c[0].text_input("API key", type="password",
-                                      placeholder="•••••••• (saved)" if ai_cfg.get("api_key") else "sk-ant-…")
+            new_key = c[0].text_input("API key", type="password", disabled=not store_ok,
+                                      placeholder="•••••••• (saved)" if saved else "sk-ant-…")
         model = c[1].text_input("Model", ai_cfg.get("model") or ai.DEFAULT_MODEL)
         incl = c[2].checkbox("Also send a rounded typical amount (helps with vague payees)", ai_cfg.get("include_amounts", False))
         b = st.columns([1, 1, 4])
         if b[0].form_submit_button("Save"):
-            if new_key:
-                ai_cfg["api_key"] = new_key.strip()
-            ai_cfg.update(model=model.strip() or ai.DEFAULT_MODEL, include_amounts=incl)
-            db.set_setting(con, "ai", ai_cfg)
-            st.success("Saved.")
-        if b[1].form_submit_button("Remove key") and ai_cfg.get("api_key"):
-            ai_cfg.pop("api_key")
-            db.set_setting(con, "ai", ai_cfg)
+            try:
+                if new_key:
+                    keystore.set_key(new_key)
+                ai_cfg.pop("api_key", None)
+                ai_cfg.update(model=model.strip() or ai.DEFAULT_MODEL, include_amounts=incl)
+                db.set_setting(con, "ai", ai_cfg)
+                st.success("Saved.")
+            except RuntimeError as e:
+                st.error(str(e))
+        if b[1].form_submit_button("Remove key") and saved:
+            keystore.delete_key()
             st.success("Key removed.")
     if not env_key:
-        st.caption("The key is stored in your local database file in plain text, like the rest of your data. "
-                   "For extra care, set it as the ANTHROPIC_API_KEY environment variable instead and leave this blank.")
+        st.caption("The key is kept in your computer's credential store (Windows Credential Manager, macOS Keychain or "
+                   "your Linux keyring), not in the database, so backups don't contain it."
+                   if store_ok else
+                   "No credential store was found on this computer, so the app can't save a key. Set the "
+                   "ANTHROPIC_API_KEY environment variable instead.")
     log = db.get_setting(con, "ai_log", []) or []
     if log:
         with st.expander(f"History of what was sent ({len(log)} requests)"):
@@ -1755,17 +1811,25 @@ elif page == "Household & settings":
     ed = st.data_editor(rr, num_rows="dynamic", hide_index=True, width="stretch", column_config={"id": None})
     c = st.columns(3)
     if c[0].button("Save rules"):
-        con.execute("DELETE FROM cat_rules")
-        for _, r in ed.iterrows():
-            if r["pattern"] and r["category"]:
+        rows = [r for _, r in ed.iterrows() if isinstance(r["pattern"], str) and r["pattern"].strip()
+                and isinstance(r["category"], str) and r["category"].strip()]
+        bad = [(r["pattern"], categorize.check_pattern(r["pattern"])) for r in rows if categorize.check_pattern(r["pattern"])]
+        if bad:
+            st.error("Not saved. Fix these patterns first:\n\n" + "\n".join(f"- `{p}`: {why}" for p, why in bad))
+        else:
+            con.execute("DELETE FROM cat_rules")
+            for r in rows:
                 con.execute("INSERT INTO cat_rules(pattern, category, priority) VALUES(?,?,?)",
-                            (r["pattern"], r["category"], int(r["priority"]) if pd.notna(r["priority"]) else 100))
-        con.commit()
-        st.rerun()
+                            (r["pattern"].strip(), r["category"].strip(), int(r["priority"]) if pd.notna(r["priority"]) else 100))
+            con.commit()
+            st.rerun()
     if c[1].button("Re-categorise everything"):
         st.success(f"Updated {categorize.apply(con)} transactions (hand-edited ones kept).")
 
     st.subheader("Backup")
     st.caption(f"All data lives in one file: `{db.DB_PATH}`. Copy it to back up; it's not encrypted, so keep it somewhere private.")
-    with open(db.DB_PATH, "rb") as fh:
-        st.download_button("Download a copy of the database", fh.read(), "finance-backup.db")
+    if st.button("Prepare a backup copy"):
+        st.session_state["backup_bytes"] = db.backup_bytes(con)
+    if st.session_state.get("backup_bytes"):
+        st.download_button("Download the backup", st.session_state["backup_bytes"],
+                           f"finance-backup-{date.today():%Y-%m-%d}.db", on_click=lambda: st.session_state.pop("backup_bytes", None))

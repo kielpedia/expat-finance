@@ -1,0 +1,34 @@
+[project]
+name = "expat-finance"
+version = "0.1.0"
+description = "Local budget and tax-checklist app for a US family living in the Netherlands"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "S"]
+ignore = [
+    "E501",    # long UI strings read better unwrapped
+    "E731",    # small lambdas are used as local helpers
+    "B008",
+    "S101",    # assert in tests
+    "S608",    # SQL built only from constant column lists (checked in review)
+    "S110",    # deliberate best-effort try/except/pass around optional features
+    "S112",
+    "UP007",
+    "B023",    # lambdas in loops are called within the same iteration
+    "B905",    # zip() over columns of one frame: lengths always match
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+"sample_data/*" = ["S311"]   # random numbers for fake data
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

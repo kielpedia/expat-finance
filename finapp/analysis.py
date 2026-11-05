@@ -23,7 +23,7 @@ def transactions(con, conv, start=None, end=None) -> pd.DataFrame:
         params.append(str(end))
     df = pd.read_sql(q + " ORDER BY t.date", con, params=params, parse_dates=["date"])
     if df.empty:
-        for c in ("eur", "usd", "group", "budget", "month", "spread_months", "spread_dir", "spread", "payee"):
+        for c in ("eur", "usd", "group", "budget", "income", "month", "spread_months", "spread_dir", "spread", "payee"):
             df[c] = pd.Series(dtype=float if c in ("eur", "usd") else object)
         return df
     df["category"] = df["category"].fillna("Uncategorized")
@@ -37,6 +37,7 @@ def transactions(con, conv, start=None, end=None) -> pd.DataFrame:
     df["spread_dir"] = sd.fillna("next").where(sd.isin(["next", "past"]), "next")
     df["spread"] = spread_labels(df)
     df["budget"] = df["category"].map(is_budget)
+    df["income"] = df["group"] == "Income"
     df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
     df["payee"] = df.apply(lambda r: payee_key(r["counterparty"], r["description"]), axis=1)
     return df
@@ -130,28 +131,45 @@ def spread_costs(tx: pd.DataFrame) -> pd.DataFrame:
     return s.sort_values("date", ascending=False)
 
 
+def income_mask(tx: pd.DataFrame) -> pd.Series:
+    """True for income rows (category group 'Income'). Money coming back in any other category (a refund,
+    a reimbursement) is not income: it reduces spending in that category."""
+    if "income" in tx:
+        return tx["income"].astype(bool)
+    return tx["category"].fillna("").map(group_of) == "Income"
+
+
+def spending_rows(tx: pd.DataFrame) -> pd.DataFrame:
+    """Budget rows that count as spending: everything that isn't income or a transfer, refunds included
+    (as positive amounts that offset the spending)."""
+    return tx[tx["budget"] & ~income_mask(tx)]
+
+
 def monthly_summary(tx: pd.DataFrame) -> pd.DataFrame:
     b = tx[tx["budget"]]
     if b.empty:
         return pd.DataFrame(columns=["month", "income", "expenses", "net", "savings_rate"])
-    g = b.groupby("month")["eur"]
+    inc = income_mask(b)
+    months = sorted(b["month"].unique())
     out = pd.DataFrame({
-        "income": g.apply(lambda s: s[s > 0].sum()),
-        "expenses": g.apply(lambda s: -s[s < 0].sum()),
+        "income": b[inc].groupby("month")["eur"].sum().reindex(months, fill_value=0.0),
+        "expenses": -b[~inc].groupby("month")["eur"].sum().reindex(months, fill_value=0.0),
     })
+    out.index.name = "month"
     out["net"] = out["income"] - out["expenses"]
     out["savings_rate"] = (out["net"] / out["income"]).where(out["income"] > 0)
     return out.reset_index()
 
 
 def by_category(tx: pd.DataFrame, expenses_only=True) -> pd.DataFrame:
-    b = tx[tx["budget"]]
-    if expenses_only:
-        b = b[b["eur"] < 0]
+    """Spending per category, net of refunds in that category (expenses_only), or every budget category."""
+    b = spending_rows(tx) if expenses_only else tx[tx["budget"]]
     if b.empty:
         return pd.DataFrame(columns=["group", "category", "eur", "n"])
     out = b.groupby(["group", "category"]).agg(eur=("eur", "sum"), n=("eur", "size")).reset_index()
-    out["eur"] = out["eur"].abs() if expenses_only else out["eur"]
+    if expenses_only:
+        out = out[out["eur"] < 0]
+        out["eur"] = out["eur"].abs()
     return out.sort_values("eur", ascending=False)
 
 
@@ -213,8 +231,13 @@ def net_worth_series(con, conv, freq="ME") -> pd.DataFrame:
 
 
 def health(con, conv, tx: pd.DataFrame, months=6) -> dict:
-    """Key ratios over the last `months` months of data."""
-    ms = monthly_summary(tx)
+    """Key ratios over the last `months` complete months of data. Yearly bills set to spread count as their
+    monthly share, and the current (unfinished) month is left out so it doesn't drag the averages down."""
+    this_month = pd.Timestamp.today().normalize().replace(day=1)
+    ms = monthly_summary(spread_view(tx)) if not tx.empty else monthly_summary(tx)
+    if len(ms) and not tx.empty:
+        first = tx["month"].min()
+        ms = ms[(ms["month"] >= first) & (ms["month"] < this_month) & (ms["month"] <= tx["month"].max())]
     recent = ms.tail(months)
     avg_exp = recent["expenses"].mean() if len(recent) else 0
     avg_inc = recent["income"].mean() if len(recent) else 0
@@ -235,6 +258,7 @@ def health(con, conv, tx: pd.DataFrame, months=6) -> dict:
         "consumer_debt": debts,
         "debt_to_income": debt_payments / avg_inc if avg_inc else None,
         "months_of_data": len(ms),
+        "months_used": len(recent),
     }
 
 

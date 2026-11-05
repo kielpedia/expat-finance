@@ -366,8 +366,8 @@ def read_table(raw_text: str) -> pd.DataFrame:
     """Find the header row (the first row with a date-ish and a price-ish column) and read from there."""
     lines = raw_text.splitlines()
     for i, line in enumerate(lines[:40]):
-        l = line.lower()
-        if re.search(r"grant|award", l) and re.search(r"price|strike", l):
+        low = line.lower()
+        if re.search(r"grant|award", low) and re.search(r"price|strike", low):
             text = "\n".join(lines[i:])
             delim = max([",", ";", "\t"], key=lambda d: line.count(d))
             rows = list(csv.reader(io.StringIO(text), delimiter=delim))
@@ -423,10 +423,11 @@ def missing_symbol(parsed: pd.DataFrame) -> bool:
 
 
 def grant_key(r) -> str:
-    if r.get("grant_ref"):
-        return str(r["grant_ref"])
+    ref = r.get("grant_ref")
+    if isinstance(ref, str) and ref.strip() and ref.strip().lower() not in ("nan", "none"):
+        return ref.strip()
     base = f"{r['symbol']}|{pd.Timestamp(r['grant_date']):%Y-%m-%d}|{float(r['strike']):.4f}|{float(r['quantity']):.4f}"
-    return "h:" + hashlib.sha1(base.encode()).hexdigest()[:16]
+    return "h:" + hashlib.sha1(base.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def presplit_in_file(con, parsed: pd.DataFrame) -> dict:
