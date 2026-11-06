@@ -13,6 +13,17 @@ python -m venv .venv
 .venv/bin/ruff check .
 ```
 
+## Project layout
+
+```
+app.py                  entry point: page setup, the localhost guard, sidebar navigation
+finapp/                 calculations, no Streamlit: importers, categorisation, analysis, tax rules, FX, options
+finapp/ui/common.py     shared per-run state (database, rates, profile) and small UI helpers
+finapp/ui/pages/        one module per page, each with a render() function
+finapp/ui/*.py          larger page sections (box 3, payslips, what-if)
+tests/                  pytest suite, including a test that renders every page on the sample data
+```
+
 ## Adding a bank format
 
 1. Add a `parse_<bank>(text)` function to `finapp/importers.py` that returns the standard columns (see the module docstring).
@@ -31,5 +42,6 @@ Copy the Utrecht block in `MUNICIPAL_CHARGES` (`finapp/benchmarks.py`), fill in 
 ## Style
 
 - `ruff` must pass (it runs in CI).
-- Keep money logic in `finapp/` modules with tests, and Streamlit code in `app.py` / `finapp/ui_*.py`.
+- Keep money logic in `finapp/` modules with tests, and Streamlit code in `finapp/ui/`.
+- A new page: add a module with `render()` to `finapp/ui/pages/`, register it in `PAGES` in `app.py`, and add its name to `tests/test_pages.py`.
 - Plain, specific wording in the UI: say what the number is and where it came from.

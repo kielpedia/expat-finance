@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from . import db, expat, rules
+from finapp import db, expat, rules
 
 
 def render(con, conv, profile: dict, year: int, eur, dual) -> dict:

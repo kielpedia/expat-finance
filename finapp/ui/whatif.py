@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from . import analysis, db
+from finapp import analysis, db
 
 SURPLUS, DEFICIT, INK = "#2a78d6", "#e34948", "#52514e"
 ACTIONS = ["Remove", "Change by %", "Set to €/month"]

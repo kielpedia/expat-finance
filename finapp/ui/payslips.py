@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from . import db, payslips
+from finapp import db, payslips
 
 PERSONS = {"me": "Me", "partner": "Partner"}
 

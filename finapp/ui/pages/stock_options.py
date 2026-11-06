@@ -5,7 +5,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from . import db, options
+from finapp import db, options
+from finapp.ui import common
 
 ITM, UNDER, INK, GRID = "#2a78d6", "#e34948", "#52514e", "rgba(0,0,0,0.08)"
 STATUS_ICON = {"in the money": "🟢", "underwater": "🔴", "no price": "⚪", "expired": "⚫", "fully exercised": "✔️"}
@@ -26,7 +27,8 @@ def _sync_nw(con, cfg):
         options.sync_networth(con, prices, cfg["tax_rate"], cfg["after_tax"])
 
 
-def render(con, conv):
+def render():
+    con, conv, *_ = common.state()
     st.header("Stock options")
     cfg = load_cfg(con)
     usd_per_eur = conv.usd_per_eur()

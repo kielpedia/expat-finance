@@ -20,5 +20,9 @@
 - `defusedxml` protects Excel parsing; share-price lookups only accept ticker-shaped input.
 
 ### Changed
+- Each page has its own address (`/budget`, `/settings`, …), so reloading or bookmarking keeps you on the same page.
+- Overview cash flow has a period picker: current month, last month, year to date, 1 year, 3 years, all time (remembered between visits).
+- The Overview month picker lists the newest month first.
+- The 1,800-line `app.py` is split into one module per page under `finapp/ui/pages/`, with shared state in `finapp/ui/common.py`. Every page renders exactly as before (checked element by element), and a new test renders each page in CI.
 - Stock options work for any company and several at once; the ticker and company come from the import.
 - Where you live (municipality) is set on Household & settings; enter your own rates if your municipality isn't built in.
