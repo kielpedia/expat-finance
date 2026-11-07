@@ -20,6 +20,8 @@
 - `defusedxml` protects Excel parsing; share-price lookups only accept ticker-shaped input.
 
 ### Changed
+- README has screenshots and a short demo GIF, all from the sample data.
+- The average line's label on the cash-flow chart has a background so it stays readable over a bar.
 - Each page has its own address (`/budget`, `/settings`, …), so reloading or bookmarking keeps you on the same page.
 - Overview cash flow has a period picker: current month, last month, year to date, 1 year, 3 years, all time (remembered between visits).
 - The Overview month picker lists the newest month first.

@@ -7,6 +7,19 @@
 
 Everything stays on your computer. The app only goes online when you click for it: to download ECB exchange rates, to fetch a share price for your stock options (only the ticker is sent), or, if you opt in, to ask Claude to suggest categories (see below).
 
+![A short tour: cash flow by period, budget, US filing checks, box 3 and stock options](docs/screenshots/demo.gif)
+
+<sub>All screenshots use the made-up household in `sample_data/`.</sub>
+
+| | |
+|---|---|
+| ![Overview: averages, net worth and the year's checklist](docs/screenshots/overview.png) | ![Cash flow by month, with a period picker](docs/screenshots/cash-flow.png) |
+| **Overview:** averages, net worth and what to act on this year | **Cash flow:** net per month for any period, click a month for its transactions |
+| ![Budget: spending by category](docs/screenshots/budget.png) | ![US filing: FBAR, Form 8938 and the Child Tax Credit](docs/screenshots/us-filing.png) |
+| **Budget:** where the money goes, against your own history and Dutch households | **US filing:** FBAR and Form 8938 thresholds, Child Tax Credit with FTC vs. FEIE |
+| ![Dutch box 3 calculation](docs/screenshots/dutch-tax.png) | ![Stock options value by grant](docs/screenshots/stock-options.png) |
+| **Box 3:** what you owned on 1 January and the tax on it, step by step | **Stock options:** value per grant, splits handled, several companies at once |
+
 ## Start it
 
 You need Python 3.11 or newer.

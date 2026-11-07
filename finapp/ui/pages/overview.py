@@ -114,7 +114,8 @@ def render():
             avg = m["net"].mean()
             fig.add_hline(y=avg, line_dash="dot", line_width=1.5, line_color=INK,
                           annotation_text=f"avg {sym}{avg:,.0f}/mo", annotation_position="top left",
-                          annotation_font_color=INK, annotation_font_size=12)
+                          annotation_font_color=INK, annotation_font_size=12,
+                          annotation_bgcolor="rgba(255,255,255,0.85)")   # stays readable over a bar
             fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.35)")
             # label only the best and worst month, not every bar
             for idx in (m["net"].idxmax(), m["net"].idxmin()):
