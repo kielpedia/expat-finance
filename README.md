@@ -29,7 +29,7 @@ You need Python 3.11 or newer.
 
 The first start creates a virtual environment and installs the packages in `requirements.txt` (Streamlit, pandas, Plotly, requests, openpyxl, pypdf, keyring, defusedxml). After that it opens at http://localhost:8501, reachable only from your machine.
 
-**Don't expose it to a network.** The app has no login: anyone who can reach it sees all your data. It refuses to open when it's listening on a network address or reached through a reverse proxy. See [SECURITY.md](SECURITY.md).
+**Don't expose it to a network.** The app has no login: anyone who can reach it sees all your data. It refuses to open when it's listening on a network address or reached through a reverse proxy. To use it from other devices, run it in self-hosted mode behind a login instead (see [Self-hosting](#self-hosting-optional)). See [SECURITY.md](SECURITY.md).
 
 ## First-time setup
 
@@ -86,7 +86,53 @@ All tax figures live in `finapp/rules.py`, one block per year, with sources. Add
 
 ## Your data
 
-One SQLite file at `~/FinanceApp/finance.db` (set `FINAPP_DB` to move it). It's not encrypted, so keep it on an encrypted disk (FileVault/BitLocker) and back it up from the Settings page.
+One SQLite file at `~/FinanceApp/finance.db` (set `FINAPP_DB` to move it; self-hosted, it's in the `/data` volume). It's not encrypted, so keep it on an encrypted disk (FileVault/BitLocker) and back it up from the Settings page.
+
+## Self-hosting (optional)
+
+Desktop mode is the default and the simplest. If you'd rather run the app on a home server and open it from any device, there's a container image for that. It only works behind a reverse proxy that does the login, because the app has none of its own.
+
+How it stays safe:
+
+- The image starts in self-hosted mode (`FINAPP_MODE=server`) and refuses to show anything until you set `FINAPP_PROXY_SECRET` (32+ random characters).
+- Your reverse proxy asks for a password, then adds that secret to every request in the `X-Finapp-Proxy-Secret` header. The app refuses any request without it, so going to the server's port directly skips nothing.
+- Keep it on your home network or VPN; don't publish it to the internet.
+
+Run it with Docker Compose:
+
+```yaml
+services:
+  finapp:
+    image: ghcr.io/kielpedia/expat-finance:main    # or pin a commit SHA tag
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      FINAPP_PROXY_SECRET: "<output of: openssl rand -hex 32>"
+      TZ: Europe/Amsterdam
+      # ANTHROPIC_API_KEY: "sk-ant-..."             # optional, for Claude category suggestions
+    volumes:
+      - finapp-data:/data                           # the database lives here
+volumes:
+  finapp-data:
+```
+
+And a Caddy site in front of it (create the password hash with `caddy hash-password`):
+
+```
+finance.example.org {
+	@outside not remote_ip 192.168.0.0/16 10.0.0.0/8
+	abort @outside
+	basic_auth {
+		you <password hash>
+	}
+	reverse_proxy <server-ip>:8501 {
+		header_up X-Finapp-Proxy-Secret {env.FINAPP_PROXY_SECRET}
+	}
+}
+```
+
+Set `FINAPP_PROXY_SECRET` in Caddy's environment to the same value. To move an existing database, copy `finance.db` into the `/data` volume while the container is stopped. On a server there's no credential store, so set `ANTHROPIC_API_KEY` in the container's environment if you use Claude suggestions. The data is still unencrypted on the server's disk and in its backups.
 
 ## Not tax advice
 

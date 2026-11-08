@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from finapp import db, fx, rules
+from finapp import db, fx, hosting, rules
 from finapp.ui import common
 from finapp.ui.pages import (
     accounts,
@@ -26,34 +26,20 @@ from finapp.ui.pages import (
 st.set_page_config(page_title="Household Finance", page_icon="💶", layout="wide")
 
 
-# The app has no login, so it must only be reachable from this computer. Refuse to show anything when it's
-# listening on a network address or being reached through a reverse proxy. FINAPP_ALLOW_REMOTE=1 overrides
-# this, at your own risk (put real authentication in front of it first).
-def _local_only():
-    if os.environ.get("FINAPP_ALLOW_REMOTE") == "1":
-        return
-    local = {"localhost", "127.0.0.1", "::1"}
-    addr = str(st.get_option("server.address") or "").strip().lower()
+# The app has no login. On a desktop it only opens from this computer; self-hosted (FINAPP_MODE=server) it
+# only opens through the reverse proxy that does the login. See finapp/hosting.py.
+def _guard():
     try:
         headers = {k.lower(): v for k, v in st.context.headers.items()}
     except Exception:  # noqa: BLE001  (no request context, e.g. in tests)
         headers = {}
-    host = headers.get("host", "")
-    host = host.rsplit("]", 1)[0].lstrip("[") if host.startswith("[") else host.split(":")[0]
-    proxied = any(h in headers for h in ("x-forwarded-for", "x-forwarded-host", "forwarded", "x-real-ip"))
-    problem = None
-    if addr not in local:
-        problem = (f"it is listening on **{addr or 'every network interface'}**" +
-                   " instead of localhost. Start it with `run.bat` / `run.sh`, which keep it on this computer.")
-    elif proxied or (host and host.lower() not in local):
-        problem = "it is being reached through a proxy or another hostname, so other people may be able to see it."
-    if problem:
-        st.error("**Household Finance won't open here:** " + problem + "\n\nThe app has no login, so it only runs for "
-                 "this computer, at http://localhost:8501.", icon=":material/lock:")
+    why = hosting.problem(os.environ, st.get_option("server.address"), headers)
+    if why:
+        st.error(hosting.refusal_message(os.environ, why), icon=":material/lock:")
         st.stop()
 
 
-_local_only()
+_guard()
 
 
 # Streamlit renders text between two "$" signs as math. This app prints a lot of dollar

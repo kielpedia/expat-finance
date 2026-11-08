@@ -1,0 +1,22 @@
+# Keep the image small, and never bake personal data into it
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+docs
+tests
+sample_data
+run.bat
+run.sh
+*.db
+*.sqlite
+*.sqlite3
+*.db-*
+finance-backup*
+.env
+.env.*
+.streamlit/secrets.toml
