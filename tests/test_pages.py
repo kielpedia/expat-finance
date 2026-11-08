@@ -48,6 +48,17 @@ def test_refuses_to_run_on_a_network_address(loaded, monkeypatch):
     assert not at.header
 
 
+def test_server_mode_refuses_without_the_proxy_secret(loaded, monkeypatch):
+    monkeypatch.delenv("FINAPP_ALLOW_REMOTE", raising=False)
+    monkeypatch.setenv("FINAPP_MODE", "server")
+    monkeypatch.setenv("FINAPP_PROXY_SECRET", "s" * 40)
+    st.cache_resource.clear()
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60)
+    at.run()                                            # AppTest sends no headers, like a request that skips the proxy
+    assert "reverse proxy" in at.error[0].value
+    assert not at.header
+
+
 @pytest.mark.parametrize("period, first, last", [
     ("Current month", "2026-11-01", "2026-11-01"),
     ("Last month", "2026-10-01", "2026-10-01"),

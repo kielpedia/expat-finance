@@ -16,7 +16,8 @@ python -m venv .venv
 ## Project layout
 
 ```
-app.py                  entry point: page setup, the localhost guard, sidebar navigation
+app.py                  entry point: page setup, the access guard, sidebar navigation
+finapp/hosting.py       who may open the app: desktop (localhost only) or self-hosted (behind a login proxy)
 finapp/                 calculations, no Streamlit: importers, categorisation, analysis, tax rules, FX, options
 finapp/ui/common.py     shared per-run state (database, rates, profile) and small UI helpers
 finapp/ui/pages/        one module per page, each with a render() function

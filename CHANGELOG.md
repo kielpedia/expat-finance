@@ -12,8 +12,12 @@
 - Import errors other than duplicates are no longer swallowed.
 - An invalid categorisation rule can't be saved, and a broken saved rule no longer stops the app.
 
+### Added
+- Optional self-hosted mode: a container image (`ghcr.io/kielpedia/expat-finance`) that only opens behind a reverse proxy that does the login and sends a shared secret header. Desktop mode is unchanged and still the default.
+
 ### Security
-- The app refuses to run on a network address or behind a reverse proxy.
+- The app refuses to run on a network address or behind a reverse proxy (desktop mode).
+- Self-hosted mode refuses every request that doesn't carry `FINAPP_PROXY_SECRET`, and won't start without a 32+ character secret.
 - The Anthropic API key moved from the database to the OS credential store; older keys are migrated and removed from the database.
 - Backups use SQLite's backup API and never contain an API key.
 - New databases are created readable by the owner only (macOS/Linux).
