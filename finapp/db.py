@@ -1,6 +1,9 @@
 import json
 import os
 import sqlite3
+import tempfile
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 DEFAULT_DIR = Path(os.environ.get("FINAPP_HOME", Path.home() / "FinanceApp"))
@@ -112,22 +115,100 @@ def _migrate(con):
 def backup_bytes(con) -> bytes:
     """A consistent copy of the database (SQLite's backup API, safe while the app is writing), without any
     API key an older version may have stored."""
-    import tempfile
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / "backup.db"
         dst = sqlite3.connect(path)
         con.backup(dst)
-        row = dst.execute("SELECT value FROM settings WHERE key='ai'").fetchone()
-        if row:
-            try:
-                cfg = json.loads(row[0]) or {}
-                if cfg.pop("api_key", None) is not None:
-                    dst.execute("UPDATE settings SET value=? WHERE key='ai'", (json.dumps(cfg),))
-                    dst.commit()
-            except (json.JSONDecodeError, TypeError, AttributeError):
-                pass
+        _strip_api_key(dst)
         dst.close()
         return path.read_bytes()
+
+
+def _strip_api_key(con):
+    """Remove an API key an older version may have stored in the settings table."""
+    row = con.execute("SELECT value FROM settings WHERE key='ai'").fetchone()
+    if row:
+        try:
+            cfg = json.loads(row[0]) or {}
+            if cfg.pop("api_key", None) is not None:
+                con.execute("UPDATE settings SET value=? WHERE key='ai'", (json.dumps(cfg),))
+                con.commit()
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+
+
+class BackupError(ValueError):
+    """A backup can't be restored. The message is written for the person using the app."""
+
+
+REQUIRED_COLUMNS = {"accounts": {"id", "name"}, "transactions": {"account_id", "date", "amount"}, "settings": {"key", "value"}}
+
+
+def _check_backup(con):
+    """Raise BackupError unless this is an intact database from this app."""
+    if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+        raise BackupError("This file is damaged, so it can't be restored.")
+    if con.execute("SELECT 1 FROM sqlite_master WHERE type IN ('trigger', 'view') LIMIT 1").fetchone():
+        raise BackupError("This file contains database code this app never creates, so it wasn't restored.")
+    for table, needed in REQUIRED_COLUMNS.items():
+        if not needed <= {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}:
+            raise BackupError("This is a database, but not a backup from this app.")
+
+
+@contextmanager
+def _opened_backup(data: bytes):
+    """A checked, upgraded temporary copy of an uploaded backup. The upload itself is never trusted as-is."""
+    if not data.startswith(b"SQLite format 3\x00"):
+        raise BackupError("This isn't a database file. Choose a `.db` backup made by this app.")
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "restore.db"
+        path.write_bytes(data)
+        src = sqlite3.connect(path)
+        try:
+            src.row_factory = sqlite3.Row
+            try:
+                src.execute("PRAGMA trusted_schema = OFF")
+                _check_backup(src)
+                src.execute("PRAGMA journal_mode = DELETE")
+                src.executescript(SCHEMA)
+                _migrate(src)
+                _strip_api_key(src)
+            except sqlite3.Error as e:
+                raise BackupError(f"This file couldn't be read as a backup: {e}") from e
+            yield src
+        finally:
+            src.close()
+
+
+def summary(con) -> dict:
+    """What a database holds, to show before replacing anything."""
+    first, last = con.execute("SELECT MIN(date), MAX(date) FROM transactions").fetchone()
+    return {"accounts": con.execute("SELECT COUNT(*) FROM accounts").fetchone()[0],
+            "transactions": con.execute("SELECT COUNT(*) FROM transactions").fetchone()[0],
+            "first": first, "last": last}
+
+
+def inspect_backup(data: bytes) -> dict:
+    """The summary of an uploaded backup, or BackupError if it can't be restored. Changes nothing."""
+    with _opened_backup(data) as src:
+        return summary(src)
+
+
+def restore_bytes(con, data: bytes) -> Path:
+    """Replace everything in the database with an uploaded backup, and return the safety copy made first.
+
+    Copies into the open connection with SQLite's backup API, so the running app keeps working and a failure
+    part-way leaves the current data as it was."""
+    with _opened_backup(data) as src:
+        try:
+            con.commit()
+            safety = DB_PATH.with_name(f"finance-before-restore-{datetime.now():%Y%m%d-%H%M%S-%f}.db")
+            safety.touch(mode=0o600)
+            safety.write_bytes(backup_bytes(con))
+            src.backup(con)
+        except (OSError, sqlite3.Error) as e:
+            raise BackupError(f"Nothing was changed; the restore failed: {e}") from e
+    return safety
 
 
 def get_setting(con, key, default=None):

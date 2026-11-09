@@ -13,6 +13,7 @@
 - An invalid categorisation rule can't be saved, and a broken saved rule no longer stops the app.
 
 ### Added
+- Restore from a backup in Settings: upload a `.db` file, see what's in it, and replace your data. The file is checked first, and a copy of your current data is kept next to the database.
 - Optional self-hosted mode: a container image (`ghcr.io/kielpedia/expat-finance`) that only opens behind a reverse proxy that does the login and sends a shared secret header. Desktop mode is unchanged and still the default.
 
 ### Security

@@ -267,3 +267,32 @@ def render():
     if st.session_state.get("backup_bytes"):
         st.download_button("Download the backup", st.session_state["backup_bytes"],
                            f"finance-backup-{date.today():%Y-%m-%d}.db", on_click=lambda: st.session_state.pop("backup_bytes", None))
+
+    st.subheader("Restore from a backup")
+    st.caption("Replaces **all** data in this app with a `.db` backup, or the `finance.db` file from another install. "
+               "A copy of your current data is saved next to the database first.")
+    if done := st.session_state.pop("restore_done", None):
+        st.success(done)
+    round_ = st.session_state.get("restore_round", 0)      # a new key empties the uploader after a restore
+    upload = st.file_uploader("Backup file", type=["db", "sqlite", "sqlite3"], key=f"restore_upload_{round_}")
+    if not upload:
+        return
+    data = upload.getvalue()
+    describe = lambda s: (f"{s['accounts']:,} accounts, {s['transactions']:,} transactions"
+                          + (f", {s['first']} to {s['last']}" if s["first"] else ""))
+    try:
+        found = db.inspect_backup(data)
+    except db.BackupError as e:
+        st.error(str(e))
+        return
+    st.markdown(f"**In this file:** {describe(found)}  \n**Will be replaced:** {describe(db.summary(con))}")
+    sure = st.checkbox("Replace all my current data with this file", key=f"restore_confirm_{round_}")
+    if st.button("Restore this backup", type="primary", disabled=not sure):
+        try:
+            safety = db.restore_bytes(con, data)
+        except db.BackupError as e:
+            st.error(str(e))
+            return
+        st.session_state["restore_round"] = round_ + 1
+        st.session_state["restore_done"] = f"Restored {describe(found)}. Your previous data is saved as `{safety}`."
+        st.rerun()
