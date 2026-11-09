@@ -132,7 +132,7 @@ finance.example.org {
 }
 ```
 
-Set `FINAPP_PROXY_SECRET` in Caddy's environment to the same value. To move an existing database, copy `finance.db` into the `/data` volume while the container is stopped. On a server there's no credential store, so set `ANTHROPIC_API_KEY` in the container's environment if you use Claude suggestions. The data is still unencrypted on the server's disk and in its backups.
+Set `FINAPP_PROXY_SECRET` in Caddy's environment to the same value. To move an existing database, upload your `finance.db` under Settings → Restore from a backup. On a server there's no credential store, so set `ANTHROPIC_API_KEY` in the container's environment if you use Claude suggestions. The data is still unencrypted on the server's disk and in its backups.
 
 ## Not tax advice
 
