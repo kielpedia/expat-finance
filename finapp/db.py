@@ -109,6 +109,8 @@ def _migrate(con):
     options.setup(con)
     from . import payslips
     payslips.setup(con)
+    from . import banksync         # Enable Banking connections (CREATE IF NOT EXISTS)
+    banksync.setup(con)
     con.commit()
 
 

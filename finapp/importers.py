@@ -332,8 +332,15 @@ def row_hash(account_id: int, row, seq: int) -> str:
     return hashlib.sha1(key.encode(), usedforsecurity=False).hexdigest()
 
 
+def ref_hash(account_id: int, row, ref: str) -> str:
+    """For rows that carry the bank's own reference (bank sync): stable even if the bank rewords the description."""
+    key = f"{account_id}|ref|{ref}|{row['date']:%Y-%m-%d}|{row['amount']:.2f}"
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 def save(con, account_id: int, df: pd.DataFrame, filename: str, fmt: str) -> tuple[int, int]:
-    """Insert rows, skipping duplicates. Same-day identical rows are kept apart by a sequence number."""
+    """Insert rows, skipping duplicates. Same-day identical rows are kept apart by a sequence number.
+    Rows with an `ext_ref` (the bank's reference, from bank sync) are matched on that instead."""
     cur = con.execute("INSERT INTO imports(filename, account_id, fmt, rows, added) VALUES(?,?,?,?,0)",
                       (filename, account_id, fmt, len(df)))
     import_id = cur.lastrowid
@@ -347,7 +354,8 @@ def save(con, account_id: int, df: pd.DataFrame, filename: str, fmt: str) -> tup
         base = (r["date"].date(), round(r["amount"], 2), r["description"][:120])
         seq = seen.get(base, 0)
         seen[base] = seq + 1
-        h = row_hash(account_id, r, seq)
+        ref = r.get("ext_ref") if "ext_ref" in df.columns else None
+        h = ref_hash(account_id, r, ref) if isinstance(ref, str) and ref else row_hash(account_id, r, seq)
         bal = None if pd.isna(r["balance_after"]) else float(r["balance_after"])
         try:
             con.execute(
