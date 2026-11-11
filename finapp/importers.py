@@ -335,7 +335,7 @@ def row_hash(account_id: int, row, seq: int) -> str:
 def ref_hash(account_id: int, row, ref: str) -> str:
     """For rows that carry the bank's own reference (bank sync): stable even if the bank rewords the description."""
     key = f"{account_id}|ref|{ref}|{row['date']:%Y-%m-%d}|{row['amount']:.2f}"
-    return hashlib.sha1(key.encode(), usedforsecurity=False).hexdigest()
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def save(con, account_id: int, df: pd.DataFrame, filename: str, fmt: str) -> tuple[int, int]:
