@@ -28,6 +28,8 @@ finance-backup*
 *.qfx
 
 # Secrets and local config
+*.pem
+*.key
 .env
 .env.*
 .streamlit/secrets.toml

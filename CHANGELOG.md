@@ -13,10 +13,12 @@
 - An invalid categorisation rule can't be saved, and a broken saved rule no longer stops the app.
 
 ### Added
+- EU bank sync through Enable Banking (PSD2, read-only): connect a bank on the Import page, choose which account each bank account fills, and click **Sync now**. Syncs start after your last imported transaction and never add a row twice; approvals can be renewed without losing account choices. Manual only for now.
 - Restore from a backup in Settings: upload a `.db` file, see what's in it, and replace your data. The file is checked first, and a copy of your current data is kept next to the database.
 - Optional self-hosted mode: a container image (`ghcr.io/kielpedia/expat-finance`) that only opens behind a reverse proxy that does the login and sends a shared secret header. Desktop mode is unchanged and still the default.
 
 ### Security
+- The Enable Banking private key is read from a file or mounted secret, never stored in the database or backups, and refused on macOS/Linux if other users can read it. Bank approvals use a single-use `state` that expires after an hour.
 - The app refuses to run on a network address or behind a reverse proxy (desktop mode).
 - Self-hosted mode refuses every request that doesn't carry `FINAPP_PROXY_SECRET`, and won't start without a 32+ character secret.
 - The Anthropic API key moved from the database to the OS credential store; older keys are migrated and removed from the database.

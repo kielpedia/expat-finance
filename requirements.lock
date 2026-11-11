@@ -14,7 +14,7 @@ backports-tarfile==1.2.0 ; python_full_version < '3.12'
     # via jaraco-context
 certifi==2026.10.23
     # via requests
-cffi==2.1.1 ; platform_python_implementation != 'PyPy' and sys_platform == 'linux'
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
     # via cryptography
 charset-normalizer==3.5.2
     # via requests
@@ -22,8 +22,10 @@ click==8.5.0
     # via
     #   streamlit
     #   uvicorn
-cryptography==50.0.2 ; sys_platform == 'linux'
-    # via secretstorage
+cryptography==50.0.2
+    # via
+    #   -r requirements.txt
+    #   secretstorage
 defusedxml==0.7.1
     # via -r requirements.txt
 et-xmlfile==2.0.0
@@ -97,7 +99,7 @@ protobuf==7.36.2
     # via streamlit
 pyarrow==26.0.1
     # via streamlit
-pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy' and sys_platform == 'linux'
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
     # via cffi
 pydeck==0.9.3
     # via streamlit

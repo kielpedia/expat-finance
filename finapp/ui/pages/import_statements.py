@@ -6,12 +6,15 @@ import pandas as pd
 import streamlit as st
 
 from finapp import analysis, categorize, db, importers, taxtreat
-from finapp.ui import common
+from finapp.ui import bank_connections, common
 
 
 def render():
     con, conv, profile, YEAR, USD_NOW = common.state()
     st.header("Import statements")
+    bank_connections.render(con)
+    st.divider()
+    st.subheader("Statement files")
     st.markdown("Export transactions as **CSV** from your bank (TXT for ABN AMRO) and drop them here. "
                 "Re-importing an overlapping period is safe; duplicates are skipped.")
     with st.expander("Where to find the export in each bank"):
