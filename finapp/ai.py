@@ -190,13 +190,44 @@ def chat_prompt(items, categories, include_amounts=False) -> str:
     )
 
 
+def _fenced_json(text):
+    """The first {...} inside a ``` or ```json fence, or None. Linear time, unlike a lazy regex.
+
+    Same result as re.search(r"```(?:json)?\\s*(\\{.*?\\})\\s*```", text, re.S): only the first
+    fence that is followed by a "{" can match, because any later one would close at a subset
+    of the same closing fences.
+    """
+    i = text.find("```")
+    while i >= 0:
+        j = i + 3
+        if text.startswith("json", j):
+            j += 4
+        while j < len(text) and text[j].isspace():
+            j += 1
+        if text.startswith("{", j):
+            break
+        i = text.find("```", i + 1)
+    else:
+        return None
+    brace = j
+    p = text.find("```", brace + 1)
+    while p >= 0:
+        k = p - 1
+        while k > brace and text[k].isspace():
+            k -= 1
+        if k > brace and text[k] == "}":
+            return text[brace:k + 1]
+        p = text.find("```", p + 1)
+    return None
+
+
 def parse_chat_reply(text, items, categories, include_amounts=False):
     """Parse Claude's pasted reply back into suggestions keyed by local payee. Matches by name, then by id."""
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text or "", re.S)
-    blob = m.group(1) if m else (text or "")
-    if not m:
-        start, end = blob.find("{"), blob.rfind("}")
-        blob = blob[start:end + 1] if start >= 0 and end > start else ""
+    text = text or ""
+    blob = _fenced_json(text)
+    if blob is None:
+        start, end = text.find("{"), text.rfind("}")
+        blob = text[start:end + 1] if start >= 0 and end > start else ""
     try:
         sugg = json.loads(blob)["suggestions"]
     except (ValueError, KeyError, TypeError) as e:
