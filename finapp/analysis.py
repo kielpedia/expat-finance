@@ -161,6 +161,28 @@ def monthly_summary(tx: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index()
 
 
+def cash_flow(tx: pd.DataFrame) -> pd.DataFrame:
+    """Per month: the actual cash (income, expenses, net) next to the same month with spread payments counted as
+    their monthly share (income_spread, expenses_spread, net_spread). spread_effect = net_spread - net: negative
+    when the month carries shares of payments made in other months, positive in the month a spread payment was made.
+    Only months between the first and last month with transactions are kept."""
+    cols = ["month", "income", "expenses", "net", "income_spread", "expenses_spread", "net_spread", "spread_effect"]
+    actual = monthly_summary(tx)
+    if actual.empty:
+        return pd.DataFrame(columns=cols)
+    first, last = actual["month"].min(), actual["month"].max()
+    sv = spread_view(tx)
+    smooth = monthly_summary(sv[(sv["month"] >= first) & (sv["month"] <= last)])
+    months = sorted(set(actual["month"]) | set(smooth["month"]))
+    a = actual.set_index("month").reindex(months, fill_value=0.0)
+    s = smooth.set_index("month").reindex(months, fill_value=0.0)
+    out = pd.DataFrame({"income": a["income"], "expenses": a["expenses"], "net": a["net"],
+                        "income_spread": s["income"], "expenses_spread": s["expenses"], "net_spread": s["net"]})
+    out.index.name = "month"
+    out["spread_effect"] = out["net_spread"] - out["net"]
+    return out.reset_index()[cols]
+
+
 def by_category(tx: pd.DataFrame, expenses_only=True) -> pd.DataFrame:
     """Spending per category, net of refunds in that category (expenses_only), or every budget category."""
     b = spending_rows(tx) if expenses_only else tx[tx["budget"]]

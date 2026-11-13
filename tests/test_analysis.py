@@ -52,3 +52,29 @@ def test_sample_budget_is_sane(loaded, conv):
     # sample household: two salaries, kinderbijslag every quarter; spending well below income
     assert ms["income"].median() == pytest.approx(4650 + 2850, rel=0.01)
     assert (ms["expenses"] > 0).all()
+
+
+def test_cash_flow_keeps_actual_cash_and_shows_spread_separately():
+    # a yearly school fee paid in January, spread over 12 months; salary every month
+    rows = [("2026-01-15", -1200, "Family: School")] + [(f"2026-{m:02d}-25", 3000, "Income: Salary") for m in (1, 2, 3)]
+    df = frame(rows)
+    df = df.assign(id=range(len(df)), amount=df["eur"], usd=df["eur"],
+                   spread_months=[12, 1, 1, 1], spread_dir="next")
+    cf = analysis.cash_flow(df).set_index("month")
+    jan, mar = cf.loc[pd.Timestamp("2026-01-01")], cf.loc[pd.Timestamp("2026-03-01")]
+    # actual cash: the whole fee in January, nothing in March
+    assert jan["expenses"] == pytest.approx(1200) and mar["expenses"] == 0
+    assert mar["net"] == pytest.approx(3000)
+    # with spread costs: 100 a month, shown next to the actual figures, not instead of them
+    assert jan["expenses_spread"] == pytest.approx(100) and mar["expenses_spread"] == pytest.approx(100)
+    assert mar["net_spread"] == pytest.approx(2900) and mar["spread_effect"] == pytest.approx(-100)
+    assert jan["spread_effect"] == pytest.approx(1100)
+    assert list(cf.index) == list(pd.date_range("2026-01-01", "2026-03-01", freq="MS"))   # no months past the data
+
+
+def test_cash_flow_without_spreads_matches_monthly_summary():
+    df = frame([("2026-03-01", 3000, "Income: Salary"), ("2026-03-05", -200, "Shopping")])
+    df = df.assign(id=[1, 2], amount=df["eur"], usd=df["eur"], spread_months=1, spread_dir="next")
+    cf = analysis.cash_flow(df).iloc[0]
+    assert cf["net"] == cf["net_spread"] == 2800 and cf["spread_effect"] == 0
+    assert analysis.cash_flow(df.iloc[0:0]).empty
