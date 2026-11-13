@@ -9,6 +9,7 @@
 - Categorisation: Wise payments to other people are spending (only top-ups and conversions are transfers); "Disney Plus" is a subscription; "loon" only matches as a word; bank interest is income; EV charging isn't a utility bill.
 - US checks warn when exchange rates aren't loaded or are out of date, instead of silently using a fixed rate.
 - A child's SSN starts as "Not sure" and only a confirmed SSN counts towards the Child Tax Credit estimate.
+- Pasting a very long or malformed Claude reply on the Review page no longer hangs the app (CodeQL polynomial ReDoS alert).
 - Import errors other than duplicates are no longer swallowed.
 - An invalid categorisation rule can't be saved, and a broken saved rule no longer stops the app.
 
