@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Fixed
+- Overview: spread payments no longer replace the actual cash. The bars always show what really moved; spread costs are a separate dotted *Net with spread costs* line, and Month detail shows that month's spread shares in their own box (#18).
 - Refunds and reimbursements no longer count as income; they reduce spending in their category.
 - Overview averages count spread payments as their monthly share and leave out the unfinished current month.
 - Toeslagen are split into zorgtoeslag, huurtoeslag, kindgebonden budget and kinderopvangtoeslag, so a missing benefit is flagged even when another one arrives.
