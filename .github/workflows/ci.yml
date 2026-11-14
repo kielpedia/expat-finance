@@ -49,12 +49,17 @@ jobs:
   image:
     # Builds the self-hosting image on every PR. Publishes `:main` and `:<sha>` from main, and `:pr-<n>` for PRs
     # from branches of this repo (fork PRs only build), which the owner's server runs as a throwaway preview.
+    # Images built from main get a signed build-provenance attestation. A PR can change this file and push any tag
+    # (`:main` included), but it can't produce an attestation for refs/heads/main, so the server deploys only
+    # attested images: gh attestation verify --source-ref refs/heads/main.
     needs: [lint, test, audit]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       pull-requests: write
+      attestations: write
+      id-token: write
     env:
       PUBLISH: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
@@ -88,6 +93,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish
+        id: publish
         if: env.PUBLISH == 'true'
         uses: docker/build-push-action@v7
         with:
@@ -96,6 +102,13 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+      - name: Attest the main image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
       - name: Comment the preview link
         # PREVIEW_URL is a repository variable (Settings > Secrets and variables > Actions > Variables), e.g.
         # https://finapp-pr-{n}.example.org. Unset: no comment. The preview itself is private to the owner's network.
