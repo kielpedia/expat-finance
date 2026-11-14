@@ -68,7 +68,7 @@ Try it with fake data: `python sample_data/make_samples.py`, then import the fou
 
 ## Spreading yearly costs
 
-A payment that covers several months (a yearly school fee, annual insurance, an energy settlement) can be set to **Spread** over N months on the Transactions page, the Budget category panel or the Overview month detail. *Next N months* starts in the month it was paid; *Past N months* ends in it. The Budget then counts an equal share each month, and the "Spread payments" box shows the total to set aside per month. Balances and net worth always use the real payment, and the Overview cash-flow chart has a *Spread costs* switch to see actual cash instead.
+A payment that covers several months (a yearly school fee, annual insurance, an energy settlement) can be set to **Spread** over N months on the Transactions page, the Budget category panel or the Overview month detail. *Next N months* starts in the month it was paid; *Past N months* ends in it. The Budget then counts an equal share each month, and the "Spread payments" box shows the total to set aside per month. Balances and net worth always use the real payment. On the Overview the cash-flow bars always show the actual cash; the *Spread costs* switch adds a dotted *Net with spread costs* line on top, and Month detail lists that month's spread shares separately. Only spread costs that come back: a one-off purchase (a couch) can stay unspread and counts once, in the month you paid.
 
 ## What if…
 
