@@ -9,7 +9,8 @@ __pycache__
 .ruff_cache
 docs
 tests
-sample_data
+# sample_data/*.csv is made up and stays in: FINAPP_DEMO_DATA=1 loads it (PR previews)
+sample_data/make_samples.py
 run.bat
 run.sh
 *.db

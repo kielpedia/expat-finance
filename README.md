@@ -152,6 +152,8 @@ finance.example.org {
 
 Set `FINAPP_PROXY_SECRET` in Caddy's environment to the same value. To move an existing database, upload your `finance.db` under Settings → Restore from a backup. On a server there's no credential store, so set `ANTHROPIC_API_KEY` in the container's environment if you use Claude suggestions. The data is still unencrypted on the server's disk and in its backups. For EU bank sync, the key is read from `/run/secrets/enablebanking.pem`; the bank's approval page sends your browser back to `FINAPP_EB_REDIRECT_URL`, so it only needs to be reachable from your browser (your home network), not from the internet.
 
+For a demo or a throwaway test instance, set `FINAPP_DEMO_DATA=1`: if the database is empty, the app loads the made-up household from `sample_data/` and says so in the sidebar. It never loads into a database that already has accounts or transactions.
+
 ## Not tax advice
 
 The app estimates and flags. A cross-border US/NL tax adviser should confirm anything you file.
