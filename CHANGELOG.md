@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `FINAPP_DEMO_DATA=1` fills an empty database with the made-up household from `sample_data/` (for demos and PR previews); real data is never touched.
+
 ### Fixed
 - Refunds and reimbursements no longer count as income; they reduce spending in their category.
 - Overview averages count spread payments as their monthly share and leave out the unfinished current month.

@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from finapp import analysis, categorize, db, fx, keystore
+from finapp import analysis, categorize, db, demo, fx, keystore
 
 DEFAULT_PROFILE = {
     "tax_year": date.today().year,
@@ -40,6 +40,7 @@ def refresh():
     con = get_con()
     db._migrate(con)               # cheap; keeps a long-running app in step with code updates
     keystore.migrate_from_db(con)  # older versions kept the API key in the database
+    demo.ensure(con)               # FINAPP_DEMO_DATA=1 and an empty database only (PR previews)
     conv = fx.Converter(con, fallback_usd_per_eur=db.get_setting(con, "fallback_usd_per_eur", 1.10))
     profile = {**DEFAULT_PROFILE, **(db.get_setting(con, "profile") or {})}
     YEAR = int(profile.get("tax_year") or date.today().year)

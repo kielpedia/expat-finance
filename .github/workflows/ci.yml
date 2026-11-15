@@ -125,4 +125,4 @@ jobs:
           fi
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$marker
           **Preview:** $url
-          Updates within about 10 minutes of each push and is removed when the PR closes. Starts with an empty database; import the files in \`sample_data/\` to try it."
+          Updates within about 10 minutes of each push and is removed when the PR closes. Starts with the made-up demo household from \`sample_data/\` (in memory, reset on every update)."

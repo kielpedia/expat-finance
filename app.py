@@ -8,7 +8,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from finapp import db, fx, hosting, rules
+from finapp import db, demo, fx, hosting, rules
 from finapp.ui import common
 from finapp.ui.pages import (
     accounts,
@@ -89,6 +89,8 @@ PAGES = [
 page = st.navigation(PAGES, expanded=True)
 st.logo(str(Path(__file__).parent / "finapp" / "ui" / "logo.svg"), size="large")
 with st.sidebar:
+    if demo.is_demo(common.con):
+        st.warning("Demo data: a made-up household from `sample_data/`, not real accounts.", icon=":material/science:")
     st.caption(f"Tax year **{rules.year_label(common.YEAR)}**  ·  1 EUR = {common.USD_NOW:.4f} USD")
     fx_date = fx.latest_date(common.con)
     st.caption(f"FX rates: {'ECB, ' + fx_date if fx_date else '⚠️ not loaded, using fallback'}")
