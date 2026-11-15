@@ -78,3 +78,19 @@ def test_cash_flow_period_order():
     assert list(PERIODS) == ["Current month", "Last month", "Year to date", "1 year", "3 years", "All time"]
     assert period_range("All time") == (None, None)
     assert period_range("Last month", today="2026-01-15")[0].strftime("%Y-%m") == "2025-12"
+
+
+def test_overview_shows_spread_costs_apart_from_actual_cash(loaded):
+    # spread the biggest payment in the latest sample month over the next 12 months
+    row = loaded.execute("SELECT id, date FROM transactions WHERE amount < 0 AND category NOT LIKE 'Transfer%' "
+                         "ORDER BY date DESC, amount LIMIT 1").fetchone()
+    loaded.execute("UPDATE transactions SET spread_months=12, spread_dir='next' WHERE id=?", (row[0],))
+    loaded.commit()
+    st.cache_resource.clear()
+    at = AppTest.from_string(SCRIPT.format(mod="overview"), default_timeout=120)
+    at.run()
+    assert not at.exception, at.exception[0].message if at.exception else ""
+    assert any("Spread costs" in md.value for md in at.markdown)
+    at.toggle(key="cf_spread").set_value(False).run()
+    assert not at.exception
+    assert not any("Spread costs" in md.value for md in at.markdown)

@@ -58,9 +58,9 @@ def render():
     st.caption("🔴 act on it · 🟡 worth checking · 🔵 good to know. These are estimates, not tax advice; "
                "a cross-border (US/NL) tax adviser should confirm anything you file.")
 
-    ms = analysis.monthly_summary(tx)
+    ms = analysis.cash_flow(tx)
     if len(ms):
-        SURPLUS, DEFICIT, INK, GRID = "#2a78d6", "#e34948", "#52514e", "rgba(0,0,0,0.08)"
+        SURPLUS, DEFICIT, INK, GRID, SPREAD = "#2a78d6", "#e34948", "#52514e", "rgba(0,0,0,0.08)", "#c27c0e"
         head = st.columns([3, 2, 1])
         head[0].subheader("Cash flow")
         try:
@@ -72,13 +72,13 @@ def render():
                                          label_visibility="collapsed", key="cf_view") or "Net"
         tg = head[2].container()
         in_usd = tg.toggle("USD", key="cf_usd")
-        smooth = tg.toggle("Spread costs", key="cf_spread", value=True,
-                           help="On: payments you set to spread (e.g. a yearly school fee) count as their monthly share, "
-                                "like on the Budget page. Off: the actual cash that moved each month.")
-        if smooth:
-            tx = analysis.spread_view(tx)
-            tx = tx[(tx["month"] >= ms["month"].min()) & (tx["month"] <= ms["month"].max())]
-            ms = analysis.monthly_summary(tx)
+        has_spread = bool((ms["spread_effect"].abs() > 0.005).any())
+        overlay = tg.toggle("Spread costs", key="cf_spread", value=True, disabled=not has_spread,
+                            help="The bars always show the actual cash that moved each month. On: also draw a dotted "
+                                 "*Net with spread costs* line, where payments you set to spread (e.g. a yearly school "
+                                 "fee) count as their monthly share, like on the Budget page."
+                                 + ("" if has_spread else " None of your payments are set to spread.")) and has_spread
+        tx_all = tx
         if view != saved_view:
             db.set_setting(con, "cashflow_view", view)
 
@@ -99,7 +99,8 @@ def render():
         ms = ms.reset_index(drop=True)
 
         k, sym = (USD_NOW, "$") if in_usd else (1.0, "€")
-        m = ms.assign(income=ms["income"] * k, expenses=ms["expenses"] * k, net=ms["net"] * k)
+        m = ms.assign(income=ms["income"] * k, expenses=ms["expenses"] * k, net=ms["net"] * k,
+                      net_spread=ms["net_spread"] * k, spread_effect=ms["spread_effect"] * k)
         m["label"] = m["month"].dt.strftime("%b %Y")
 
         fig = go.Figure()
@@ -133,6 +134,14 @@ def render():
                             line=dict(color=INK, width=2), marker=dict(size=8, color=INK, line=dict(color="#fcfcfb", width=2)),
                             customdata=m["label"], hovertemplate="<b>%{customdata}</b><br>Net " + sym + "%{y:,.0f}<extra></extra>")
             fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.35)")
+        if overlay:   # spread costs drawn on top of the actual cash, never instead of it
+            fig.add_scatter(x=m["month"], y=m["net_spread"], name="Net with spread costs", mode="lines+markers",
+                            line=dict(color=SPREAD, width=2, dash="dot"),
+                            marker=dict(size=8, symbol="diamond", color=SPREAD, line=dict(color="#fcfcfb", width=1)),
+                            customdata=m[["label", "net", "spread_effect"]].values,
+                            hovertemplate="<b>%{customdata[0]}</b><br>Net with spread costs " + sym + "%{y:,.0f}"
+                                          "<br>Actual net " + sym + "%{customdata[1]:,.0f} · spread costs "
+                                          + sym + "%{customdata[2]:+,.0f}<extra></extra>")
         fig.update_layout(barmode="relative", bargap=0.3, barcornerradius=4, height=360,
                           margin=dict(t=10, b=10, l=10, r=10), hovermode="closest",
                           legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
@@ -160,19 +169,24 @@ def render():
         if view == "Net":
             n_pos = int((m["net"] >= 0).sum())
             c = st.columns(4)
-            c[0].metric("Average net / month", f"{sym}{m['net'].mean():,.0f}")
+            c[0].metric("Average net / month", f"{sym}{m['net'].mean():,.0f}",
+                        f"{sym}{m['net_spread'].mean():,.0f} with spread costs" if overlay else None,
+                        delta_color="off", delta_arrow="off",
+                        help="Actual cash. With spread costs: yearly payments you set to spread count as their monthly share.")
             c[1].metric("Months in surplus", f"{n_pos} of {len(m)}")
             c[2].metric("Best month", f"{sym}{m['net'].max():,.0f}", m.loc[m['net'].idxmax(), 'label'], delta_color="off", delta_arrow="off")
             c[3].metric("Worst month", f"{sym}{m['net'].min():,.0f}", m.loc[m['net'].idxmin(), 'label'], delta_color="off", delta_arrow="off")
         with st.expander("Table"):
-            t = m[["label", "income", "expenses", "net"]].rename(columns={"label": "Month", "income": "Income",
-                                                                           "expenses": "Spending", "net": "Net"})
+            names = {"label": "Month", "income": "Income", "expenses": "Spending", "net": "Net"}
+            if overlay:
+                names.update({"spread_effect": "Spread costs", "net_spread": "Net with spread costs"})
+            t = m[list(names)].rename(columns=names)
             fmt = "dollar" if in_usd else "euro"
             st.dataframe(t, hide_index=True, width="stretch",
-                         column_config={c: st.column_config.NumberColumn(c, format=fmt) for c in ("Income", "Spending", "Net")})
-        st.caption("Transfers between your own accounts are left out. "
-                   + ("Spread payments count as their monthly share (switch off *Spread costs* for actual cash). "
-                      if smooth else "Shows actual cash; spread payments count in full in the month paid. ")
+                         column_config={c: st.column_config.NumberColumn(c, format=fmt) for c in list(names.values())[1:]})
+        st.caption("Bars show the actual cash; transfers between your own accounts are left out. "
+                   + ("The dotted line adds spread costs: a payment set to spread counts as its monthly share instead of "
+                      "in full in the month paid. " if overlay else "")
                    + "**Click a bar** to see that month's transactions.")
 
         # ---------------------------------------------------------- month drill-down
@@ -198,6 +212,9 @@ def render():
         mm[2].metric("Net", f"{sym}{inc - out:,.0f}")
         mm[3].metric("Transactions", f"{len(base):,}")
 
+        if overlay:
+            spread_detail(tx_all, mt, month, inc - out, k, sym, in_usd)
+
         view_tx = base if flow == "All" else base[is_in] if flow == "Income" else base[~is_in]
         if view_tx.empty:
             st.caption("Nothing here for this month.")
@@ -217,24 +234,54 @@ def render():
             with right_col:
                 st.markdown("**Transactions** · biggest first. Change a category or set a spread, then save.")
                 show = view_tx.assign(amt=view_tx["eur"] * k)
-                if "part" not in show:
-                    show["part"] = ""
                 show = show.reindex(show["amt"].abs().sort_values(ascending=False).index)
-                show = show[["id", "date", "payee", "description", "account", "amt", "part", "category", "spread"]].copy()
+                show = show[["id", "date", "payee", "description", "account", "amt", "category", "spread"]].copy()
                 show["date"] = show["date"].dt.date
                 ed = st.data_editor(show, hide_index=True, width="stretch", height=420,
-                                    key=f"drill_ed_{month:%Y%m}_{flow}_{incl_all}_{smooth}",
-                                    disabled=["date", "payee", "description", "account", "amt", "part"],
+                                    key=f"drill_ed_{month:%Y%m}_{flow}_{incl_all}",
+                                    disabled=["date", "payee", "description", "account", "amt"],
                                     column_config={"id": None, "date": st.column_config.DateColumn("Date", format="DD MMM"),
                                                    "payee": st.column_config.TextColumn("Payee", width="medium"),
                                                    "description": st.column_config.TextColumn("Description", width="small"),
                                                    "account": st.column_config.TextColumn("Account", width="small"),
                                                    "amt": st.column_config.NumberColumn(sym, format="dollar" if in_usd else "euro"),
-                                                   "part": st.column_config.TextColumn("Part", width="small",
-                                                                                       help="Share of a spread payment, e.g. 3/12"),
                                                    "category": st.column_config.SelectboxColumn("Category", options=category_options(), required=True),
                                                    "spread": spread_column(show)})
                 changed = edited_rows(ed, show)
                 if st.button(f"Save {len(changed)} changes", type="primary", disabled=changed.empty, key="drill_save"):
                     save_tx_edits(changed, show.drop_duplicates("id").set_index("id"))
                     st.rerun()
+
+
+def spread_detail(tx_all, mt, month, net, k, sym, in_usd):
+    """Spread costs for one month, shown apart from the actual cash: shares of payments made in other months,
+    payments made this month that are spread out, and the net once both are counted."""
+    sp = tx_all[(tx_all["spread_months"] > 1) & tx_all["budget"]]
+    shares = analysis.spread_view(sp)
+    shares = shares[shares["month"] == month]
+    paid_now = mt[(mt["spread_months"] > 1) & mt["budget"]]
+    if shares.empty and paid_now.empty:
+        return
+    share_sum, paid_sum = shares["eur"].sum() * k, paid_now["eur"].sum() * k
+    with st.container(border=True):
+        st.markdown("**Spread costs** · not part of the actual cash above")
+        c = st.columns(3)
+        c[0].metric("Share of spread payments", f"{sym}{-share_sum:,.0f}",
+                    help="This month's share of payments you set to spread, including ones paid in other months.")
+        c[1].metric("Paid this month, spread out", f"{sym}{-paid_sum:,.0f}",
+                    help="Payments made this month that you set to spread. They are in the actual outflow above in full.")
+        c[2].metric("Net with spread costs", f"{sym}{net - paid_sum + share_sum:,.0f}",
+                    help="Actual net, with spread payments counted as their monthly share instead of in full.")
+        if len(shares):
+            o = shares.assign(share=-shares["eur"] * k, paid=-shares["paid_eur"] * k,
+                              paid_on=shares["paid_date"].dt.date)
+            fmt = "dollar" if in_usd else "euro"
+            st.dataframe(o[["payee", "category", "paid_on", "paid", "spread", "part", "share"]], hide_index=True,
+                         width="stretch",
+                         column_config={"payee": "Payee", "category": "Category",
+                                        "paid_on": st.column_config.DateColumn("Paid on", format="DD MMM YYYY"),
+                                        "paid": st.column_config.NumberColumn("Amount paid", format=fmt),
+                                        "spread": "Spread", "part": "Part",
+                                        "share": st.column_config.NumberColumn("This month", format=fmt)})
+        st.caption("Set a payment's **Spread** only for costs that come back (a yearly school fee, annual insurance). "
+                   "A one-off purchase like a couch can stay as it is; it counts once, in the month you paid.")
