@@ -1,9 +1,17 @@
 name: Claude
 
-# Claude Code works on an issue when the `claude` label is added, and answers `@claude` in
+# Claude Code works on an issue when a `claude` label is added, and answers `@claude` in
 # issue and PR comments (for follow-ups on its own PRs). Only people with write access can
 # trigger it: the action checks this, and on a public repo only they can apply labels.
 # Runs on GitHub-hosted runners only, never on a self-hosted one.
+#
+# The label picks the model: `claude` = Sonnet (most work), `claude:opus` = Opus (cross-cutting
+# or security-sensitive work), `claude:haiku` = Haiku (mechanical work with a precise spec).
+# Follow-ups use the label on the issue or PR, so a PR can be moved to another model by labelling it.
+#
+# One bot is allowed in: Claude's own reviewer (claude-review.yml) can ask for fixes on a claude/ PR
+# with a comment carrying the `<!-- claude-review-fix -->` marker, at most 2 times per PR. After
+# that the PR waits for the owner.
 
 on:
   issues:
@@ -18,10 +26,13 @@ on:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issues' && github.event.label.name == 'claude') ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+      (github.event_name == 'issues' && (github.event.label.name == 'claude' || startsWith(github.event.label.name, 'claude:'))) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
+        (github.event.comment.user.type != 'Bot' ||
+          (github.event.comment.user.login == 'claude[bot]' && github.event.issue.pull_request &&
+           contains(github.event.comment.body, '<!-- claude-review-fix -->')))) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') && github.event.comment.user.type != 'Bot') ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') && github.event.review.user.type != 'Bot')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
@@ -35,25 +46,58 @@ jobs:
       id-token: write
       actions: read
     steps:
+      - name: Pick the model and check the reviewer's fix budget
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABELS: ${{ join(github.event.issue.labels.*.name, ' ') }} ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          FROM_REVIEWER: ${{ github.event.comment.user.login == 'claude[bot]' }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          case " $LABELS " in
+            *" claude:opus "*)  model=claude-opus-5-5 ;;
+            *" claude:haiku "*) model=claude-haiku-5-5 ;;
+            *)                  model=claude-sonnet-5-5 ;;
+          esac
+          echo "model=$model" >> "$GITHUB_OUTPUT"
+          echo "Model: $model"
+
+          run=true
+          if [ "$FROM_REVIEWER" = true ]; then
+            asked=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+              --jq '[.[] | select(.user.login == "claude[bot]" and (.body | contains("<!-- claude-review-fix -->")))] | length' \
+              | awk '{s += $1} END {print s + 0}')
+            if [ "$asked" -gt 2 ]; then
+              echo "::notice::The reviewer has asked for fixes $asked times; leaving PR #$PR for the owner"
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7
+        if: steps.pick.outputs.run == 'true'
         with:
           fetch-depth: 1
 
       # So Claude can run the tests and ruff before it pushes.
       - uses: actions/setup-python@v7
+        if: steps.pick.outputs.run == 'true'
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: requirements.lock
-      - run: pip install -r requirements.lock -r requirements-dev.txt
+      - if: steps.pick.outputs.run == 'true'
+        run: pip install -r requirements.lock -r requirements-dev.txt
 
       - uses: anthropics/claude-code-action@v1
+        if: steps.pick.outputs.run == 'true'
         with:
           # Uses the owner's Claude subscription (token from `claude setup-token`).
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          label_trigger: claude
+          label_trigger: ${{ github.event.label.name || 'claude' }}
+          allowed_bots: claude
           additional_permissions: |
             actions: read
           claude_args: |
-            --model claude-opus-5-5
+            --model ${{ steps.pick.outputs.model }}
             --max-turns 40
