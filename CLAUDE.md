@@ -31,3 +31,10 @@ Both must pass before you push. CI runs the tests on Linux and Windows with Pyth
 - If the issue is unclear or would need one of the rules above bent, comment with your question instead of guessing.
 - PR description: what changed, how you tested it, and anything the reviewer should check by hand (a page to open, a figure to verify).
 - Add a line under "Unreleased" in `CHANGELOG.md` for user-visible changes.
+- Put `fixes #<n>` in the PR description: the reviewer finds the spec through it.
+
+## Review loop
+
+Agent PRs (branches `claude/`) get an automatic review by Opus (`.github/workflows/claude-review.yml`) on open and on every push. It checks the PR against its issue and the rules above, and comments only. If it asks for fixes (a comment marked `<!-- claude-review-fix -->` mentioning @claude), fix exactly those points on the same branch, run the checks, push, and reply briefly per point; if you disagree with one, say why instead of changing it. After 2 fix rounds the PR waits for the owner, who approves and merges.
+
+The issue's label picks the model (`claude` Sonnet, `claude:opus`, `claude:haiku`). If a task is too big or unclear for the run you're in, comment that it should be split or relabelled instead of guessing.
