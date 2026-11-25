@@ -47,8 +47,9 @@ jobs:
       - run: pip-audit -r requirements.lock --no-deps --disable-pip
 
   image:
-    # Builds the self-hosting image on every PR. Publishes `:main` and `:<sha>` from main, and `:pr-<n>` for PRs
-    # from branches of this repo (fork PRs only build), which the owner's server runs as a throwaway preview.
+    # Builds the self-hosting image on every PR. Publishes `:main` and `:<sha>` from main. PRs from branches of this
+    # repo (fork PRs only build) go to a separate package, `<repo>-preview`, as `:pr-<n>` and `:<PR head sha>`, which
+    # the owner's server runs as a throwaway preview. So the production package never carries PR builds.
     # Images built from main get a signed build-provenance attestation. A PR can change this file and push any tag
     # (`:main` included), but it can't produce an attestation for refs/heads/main, so the server deploys only
     # attested images: gh attestation verify --source-ref refs/heads/main.
@@ -68,11 +69,12 @@ jobs:
       - uses: docker/metadata-action@v6
         id: meta
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ github.event_name == 'pull_request' && '-preview' || '' }}
           tags: |
             type=sha,format=long,prefix=,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=pr
+            type=raw,value=${{ github.event.pull_request.head.sha }},enable=${{ github.event_name == 'pull_request' }}
       - name: Build
         uses: docker/build-push-action@v7
         with:
